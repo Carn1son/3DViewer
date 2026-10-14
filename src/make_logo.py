@@ -3,9 +3,12 @@ import os, sys
 from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 G = (39, 194, 102, 255)
-FONT = next(p for p in ['/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'] if os.path.exists(p))
+FONT = next((p for p in ['/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+             'C:/Windows/Fonts/arialbd.ttf', '/Library/Fonts/Arial Bold.ttf'] if os.path.exists(p)), None)
 
 def logo(px=512):
+    if FONT is None:  # no bold font on this machine: use the committed render
+        return Image.open(os.path.join(HERE, 'img', 'logo.png')).convert('RGBA').resize((px, px), Image.LANCZOS)
     k = 4; N = 512 * k
     im = Image.new('RGBA', (N, N), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
