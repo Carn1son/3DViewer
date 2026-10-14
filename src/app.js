@@ -249,7 +249,8 @@ function frame() {
     renderer.setScissorTest(false);
     renderer.autoClear = true;
   }
-  if (measure.a) placeMeasureLabel();
+  placeMeasureLabel();
+  if (SK.on && skLast && SK.snapEl && !SK.snapEl.hidden) skSnapMark(skLast);
 }
 function resize() {
   const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight);
@@ -503,6 +504,7 @@ function setSel(list) {
   sel = list.filter((s) => bodyById(s.b));
   updateHighlights(); renderTree(); renderProps(); renderOps(); updateStatus();
   attachGizmo();
+  if (!$('paneCreate').hidden) renderCreate();
 }
 function toggleSel(item, add) {
   if (!add) { setSel(item ? [item] : []); return; }
@@ -583,7 +585,7 @@ function setTool(tl) {
   document.querySelectorAll('[data-ltool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ltool === tl)));
   stage.classList.toggle('pick', tl === 'pick' || tl === 'measure');
   stage.classList.toggle('paint', tl === 'paint');
-  if (tl !== 'measure') clearMeasure();
+  if (tl !== 'measure') clearMeasure(); else renderProps();
   if ((tl === 'pick' || tl === 'paint') && S.right && S.tab !== 'look') showTab('look');
   if ((tl === 'pick' || tl === 'paint') && !S.right) { S.right = true; layout(); showTab('look'); }
   attachGizmo();
@@ -591,6 +593,7 @@ function setTool(tl) {
 }
 function showHint() {
   const h = $('hint');
+  if (SK.on) { h.innerHTML = t('skHint_' + SK.tool); h.hidden = false; return; }
   const map = { pick: 'hintPick', paint: S.filter === 'face' ? 'hintPaintFace' : 'hintPaintBody', move: 'hintMove', rotate: 'hintRotate', measure: 'hintMeasure' };
   if (map[tool]) { h.innerHTML = t(map[tool]); h.hidden = false; } else h.hidden = true;
 }
@@ -691,41 +694,6 @@ async function commitTransform(m) {
   attachGizmo();
 }
 
-// measure
-const measure = { a: null, b: null, line: null, label: null, dots: [] };
-function clearMeasure() {
-  if (measure.line) { helpers.remove(measure.line); measure.line.geometry.dispose(); }
-  measure.dots.forEach((d) => helpers.remove(d));
-  if (measure.label) measure.label.remove();
-  measure.a = measure.b = measure.line = measure.label = null; measure.dots = [];
-  req();
-}
-function measureClick(p) {
-  if (!p) return;
-  if (measure.b || !measure.a) { clearMeasure(); measure.a = p.point; }
-  else measure.b = p.point;
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(cssVar('--hl')), depthTest: false }));
-  dot.renderOrder = 5;
-  const r = pcam.position.distanceTo(controls.target) * 0.006 / (cam === ocam ? ocam.zoom : 1);
-  dot.scale.setScalar(Math.max(r, 0.01)); dot.position.copy(p.point); helpers.add(dot); measure.dots.push(dot);
-  if (measure.b) {
-    const g = new THREE.BufferGeometry().setFromPoints([measure.a, measure.b]);
-    measure.line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: new THREE.Color(cssVar('--hl')), depthTest: false }));
-    measure.line.renderOrder = 5; helpers.add(measure.line);
-    measure.label = document.createElement('div'); measure.label.className = 'mlabel'; stage.appendChild(measure.label);
-    const d = measure.b.clone().sub(measure.a);
-    measure.label.textContent = fmt(d.length(), 3) + ' mm   ΔX ' + fmt(d.x, 3) + '  ΔY ' + fmt(d.y, 3) + '  ΔZ ' + fmt(d.z, 3);
-    $('sSel').innerHTML = t('distance') + ' <b>' + fmt(d.length(), 3) + ' mm</b>';
-  }
-  req();
-}
-function placeMeasureLabel() {
-  if (!measure.label || !measure.b) return;
-  const mid = measure.a.clone().add(measure.b).multiplyScalar(0.5).project(cam);
-  measure.label.style.left = ((mid.x + 1) / 2 * stage.clientWidth) + 'px';
-  measure.label.style.top = ((1 - mid.y) / 2 * stage.clientHeight) + 'px';
-}
-
 // ---------------- pointer handling ----------------
 let down = null;
 renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, btn: e.button, t: Date.now() }; hideMenu(); });
@@ -739,6 +707,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 renderer.domElement.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+  if (SK.on) { if (SK.cur) skFinishPath(); else sketchMenu(e.clientX, e.clientY); return; }
   const p = pickAt(e.clientX, e.clientY);
   if (p) {
     const item = { b: p.b, f: S.filter === 'face' ? p.f : null };
@@ -747,6 +716,7 @@ renderer.domElement.addEventListener('contextmenu', (e) => {
   openBodyMenu(e.clientX, e.clientY, p);
 });
 renderer.domElement.addEventListener('dblclick', (e) => {
+  if (SK.on) { skFinishPath(); return; }
   const p = pickAt(e.clientX, e.clientY);
   if (p) { controls.target.copy(p.point); controls.update(); toast(t('pivotSet')); }
 });
@@ -758,6 +728,8 @@ renderer.domElement.addEventListener('pointermove', (e) => {
     hovRaf = 0;
     if (down && down.btn !== undefined && Math.hypot(lastMove.clientX - down.x, lastMove.clientY - down.y) > 4) return;
     if (gizmo.dragging) return;
+    if (SK.on) { sketchMove(lastMove); return; }
+    if (tool === 'measure') { const ms = measureMove(lastMove); $('sCoord').innerHTML = ms ? 'X <b>' + fmt(ms.p.x, 3) + '</b> Y <b>' + fmt(ms.p.y, 3) + '</b> Z <b>' + fmt(ms.p.z, 3) + '</b>' : ''; if (hover) { hover = null; updateHighlights(); } return; }
     const p = pickAt(lastMove.clientX, lastMove.clientY);
     $('sCoord').innerHTML = p ? 'X <b>' + fmt(p.point.x, 3) + '</b> Y <b>' + fmt(p.point.y, 3) + '</b> Z <b>' + fmt(p.point.z, 3) + '</b>' : '';
     const h = p ? { b: p.b, f: p.f } : null;
@@ -769,9 +741,10 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 renderer.domElement.addEventListener('pointerleave', () => { if (hover) { hover = null; updateHighlights(); } $('sCoord').textContent = ''; });
 
 function clickAt(e) {
+  if (SK.on) { sketchClick(e); return; }
+  if (tool === 'measure') { measureClick(e); return; }
   const p = pickAt(e.clientX, e.clientY);
   const add = e.ctrlKey || e.metaKey || e.shiftKey;
-  if (tool === 'measure') { measureClick(p); return; }
   if (tool === 'pick' || (tool === 'paint' && e.altKey)) {
     if (!p) return;
     const b = bodyById(p.b);
@@ -818,6 +791,8 @@ function openBodyMenu(x, y, p) {
   h += mi('copyLook', 'copy', t('copyLook'), 'Ctrl+Shift+C') + mi('pasteLook', 'paste', t('pasteLook'), 'Ctrl+Shift+V', { dis: !clip });
   h += mi('pickLook', 'pipette', t('takeAsCurrent'), '') + mi('applyCur', 'brush', t('applyCurrent'), '');
   h += mi('replace', 'replace', t('replaceEverywhere'), '');
+  const fsel = sel.find((x) => x.f != null);
+  if (fsel) h += '<hr>' + mi('skFace', 'sketch', t('skOnFace'), 'K') + mi('pullF', 'pull', t('opPull') + '…', '');
   if (bs.some((b) => Object.keys(b.faceColors || {}).length)) h += mi('resetFaces', 'reset', t('resetFaces'), '');
   h += '<hr>' + mi('rename', 'edit', t('rename'), 'F2', { dis: !one }) + mi('dup', 'dup', t('duplicate'), 'Ctrl+D') + mi('isolate', 'isolate', t('isolate'), '') + mi('hide', 'eyeOff', t('hide'), 'H') + mi('zoom', 'fit', t('zoomTo'), '');
   h += '<hr>' + mi('del', 'trash', t('delete'), 'Del', { bad: true });
@@ -827,6 +802,7 @@ function openBodyMenu(x, y, p) {
     applyCur: () => paint(sel, cur, sel.some((s) => s.f != null) ? 'face' : 'body'),
     replace: () => replaceColour(lookOf(bs[0], sel[0].f).color, cur),
     resetFaces: () => commit(withBodies(bs.map((b) => b.id), (b) => { b.faceColors = {}; return b; })),
+    skFace: () => startSketch('face'), pullF: () => focusOp('pull'),
     rename: () => startRename(one.id), dup: duplicate, isolate, hide: hideSel, zoom: () => fitView(null, true), del: deleteSel,
   });
 }
@@ -936,6 +912,7 @@ function meshStats(mesh, start, count) {
 }
 function renderProps() {
   const el = $('props');
+  if (tool === 'measure' && MS.a && MS.b) { el.innerHTML = measureCard(); return; }
   const bs = selBodies();
   if (!bs.length) { el.innerHTML = ''; return; }
   const box = sceneBox(true), size = box.isEmpty() ? null : box.getSize(new THREE.Vector3());
@@ -978,7 +955,7 @@ function updateStatus() {
   const bs = selBodies();
   $('sSel').innerHTML = bs.length ? t('statSel', '<b>' + (sel.length) + '</b>') : '';
   $('bUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
-  $('welcome').hidden = state.bodies.length > 0;
+  $('welcome').hidden = state.bodies.length > 0 || SK.on;
   $('fileName').textContent = docName;
 }
 
@@ -1113,7 +1090,12 @@ let primSel = 'box';
 const primVals = {};
 function renderCreate() {
   const p = $('paneCreate');
-  let h = '<div class="prims">' + PRIMS.map((x) => '<button class="prim" data-prim="' + x[0] + '" aria-pressed="' + (x[0] === primSel) + '">' + IC.svg(x[1]) + '<span>' + esc(t('prim_' + x[0])) + '</span></button>').join('') + '</div>';
+  const faceSel = sel.some((x) => x.f != null);
+  let h = '<fieldset><legend>' + esc(t('skStart')) + '</legend><span class="note">' + esc(t('skStartNote')) + '</span><div class="skplanes">' +
+    '<button class="btn" data-skp="xy" data-ic="sketch"><span>' + esc(t('skPlaneXY')) + '</span></button><button class="btn" data-skp="xz" data-ic="sketch"><span>' + esc(t('skPlaneXZ')) + '</span></button>' +
+    '<button class="btn" data-skp="yz" data-ic="sketch"><span>' + esc(t('skPlaneYZ')) + '</span></button><button class="btn' + (faceSel ? ' primary' : '') + '" data-skp="face" data-ic="target"' + (faceSel ? '' : ' disabled') + '><span>' + esc(t('skOnFaceShort')) + '</span></button></div>' +
+    '<div class="frow"><span>' + esc(t('skOffset')) + '</span><input class="num" type="number" step="any" id="skOffset" value="' + (SK.offset || 0) + '"></div></fieldset>';
+  h += '<fieldset><legend>' + esc(t('primitives')) + '</legend><div class="prims">' + PRIMS.map((x) => '<button class="prim" data-prim="' + x[0] + '" aria-pressed="' + (x[0] === primSel) + '">' + IC.svg(x[1]) + '<span>' + esc(t('prim_' + x[0])) + '</span></button>').join('') + '</div></fieldset>';
   const pr = PRIMS.find((x) => x[0] === primSel);
   const vals = primVals[primSel] || (primVals[primSel] = Object.fromEntries(pr[2]));
   h += '<fieldset><legend>' + esc(t('params')) + ' — ' + esc(t('prim_' + primSel)) + '</legend><div class="grid3">' +
@@ -1126,6 +1108,8 @@ function renderCreate() {
   p.innerHTML = h;
   applyStatic(p);
   p.querySelectorAll('[data-prim]').forEach((b) => b.addEventListener('click', () => { primSel = b.dataset.prim; renderCreate(); }));
+  p.querySelectorAll('[data-skp]').forEach((b) => b.addEventListener('click', () => startSketch(b.dataset.skp)));
+  $('skOffset').addEventListener('change', () => { SK.offset = Number($('skOffset').value) || 0; });
   p.querySelectorAll('[data-pk]').forEach((i) => i.addEventListener('change', () => { vals[i.dataset.pk] = Number(i.value); }));
   p.querySelectorAll('[data-pos]').forEach((i) => i.addEventListener('change', () => { vals['@' + i.dataset.pos] = Number(i.value); }));
   $('primCur').addEventListener('change', () => { S.primCur = $('primCur').checked; saveS(); });
@@ -1149,47 +1133,46 @@ async function createPrim(type, vals) {
 }
 
 // ---------------- right panel: operations ----------------
-const opv = { dx: 0, dy: 0, dz: 0, ax: 'z', ang: 90, copy: false, n: 3, px: 5, py: 0, pz: 0, mplane: 'yz', mcenter: 'origin', mcopy: true, k: 1, fr: 0.5, fmode: 'all', keepTools: false };
+const opv = { dx: 0, dy: 0, dz: 0, ax: 'z', ang: 90, copy: false, n: 3, px: 5, py: 0, pz: 0, mplane: 'yz', mcenter: 'origin', mcopy: true, k: 1, fr: 0.5, fmode: 'all', keepTools: false,
+  pull: 2, cn: 6, cang: 360, cax: 'z', ccenter: 'origin', cfuse: false, pfuse: false };
 function renderOps() {
   const p = $('paneOps'); if (!p || p.hidden) return;
   const bs = selBodies(), n = bs.length;
   const faceSel = sel.filter((s) => s.f != null);
   const hasMesh = bs.some((b) => b.kind === 'mesh');
   const num = (k, lab, step) => '<label>' + esc(lab) + '<input class="num" type="number" step="' + (step || 'any') + '" data-ov="' + k + '" value="' + opv[k] + '"></label>';
-  const dis = (c) => (c ? '' : ' disabled');
+  const chk = (k, lab) => '<label class="frow chk"><input type="checkbox" data-ovc="' + k + '"' + (opv[k] ? ' checked' : '') + '><span>' + esc(lab) + '</span></label>';
+  const btn = (op, ic, lab, ok, cls) => '<button class="btn' + (cls ? ' ' + cls : '') + '" data-op="' + op + '"' + (ok ? '' : ' disabled') + (ic ? ' data-ic="' + ic + '"' : '') + '><span>' + esc(lab) + '</span></button>';
+  const sec = (id, title, body) => '<fieldset id="op-' + id + '"><legend>' + esc(title) + '</legend>' + body + '</fieldset>';
   let h = '';
-  if (!n) h += '<div class="modehint">' + esc(t('opsSelect')) + '</div>';
-  else h += '<div class="modehint">' + esc(t('nSelected', n)) + (faceSel.length ? ' · ' + esc(t('nFaces', faceSel.length)) : '') + '</div>';
-  h += '<fieldset><legend>' + esc(t('opMove')) + '</legend><div class="grid3">' + num('dx', 'ΔX') + num('dy', 'ΔY') + num('dz', 'ΔZ') + '</div>' +
-    '<div class="btnrow"><button class="btn" data-op="move"' + dis(n) + ' data-ic="move"><span>' + esc(t('doMove')) + '</span></button></div>' +
+  h += '<div class="modehint">' + (n ? esc(t('nSelected', n)) + (faceSel.length ? ' · ' + esc(t('nFaces', faceSel.length)) : '') : esc(t('opsSelect'))) + '</div>';
+  h += sec('pull', t('opPull'), '<span class="note">' + esc(t('pullNote')) + '</span><div class="grid2">' + num('pull', t('distMm')) + '<span></span></div>' +
+    '<div class="btnrow">' + btn('pull', 'pull', t('doPull'), faceSel.length > 0, 'primary') + '</div>');
+  h += sec('move', t('opMove'), '<div class="grid3">' + num('dx', 'ΔX') + num('dy', 'ΔY') + num('dz', 'ΔZ') + '</div>' +
+    '<div class="btnrow">' + btn('move', 'move', t('doMove'), n) + '</div>' +
     '<div class="grid2"><label>' + esc(t('axis')) + '<select class="sel" data-ov="ax"><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select></label>' + num('ang', t('angleDeg')) + '</div>' +
-    '<div class="btnrow"><button class="btn" data-op="rot"' + dis(n) + ' data-ic="rotate"><span>' + esc(t('doRotate')) + '</span></button></div>' +
-    '<label class="frow chk"><input type="checkbox" data-ovc="copy"' + (opv.copy ? ' checked' : '') + '><span>' + esc(t('asCopy')) + '</span></label>' +
-    '<div class="btnrow"><button class="btn sm" data-op="floor"' + dis(n) + '>' + esc(t('toFloor')) + '</button><button class="btn sm" data-op="center"' + dis(n) + '>' + esc(t('toCenter')) + '</button></div></fieldset>';
-  h += '<fieldset><legend>' + esc(t('opBool')) + '</legend><div class="btnrow">' +
-    '<button class="btn" data-op="fuse"' + dis(n >= 2) + ' data-ic="union"><span>' + esc(t('fuse')) + '</span></button>' +
-    '<button class="btn" data-op="cut"' + dis(n >= 2) + ' data-ic="subtract"><span>' + esc(t('cut')) + '</span></button>' +
-    '<button class="btn" data-op="common"' + dis(n >= 2) + ' data-ic="intersect"><span>' + esc(t('common')) + '</span></button></div>' +
-    '<label class="frow chk"><input type="checkbox" data-ovc="keepTools"' + (opv.keepTools ? ' checked' : '') + '><span>' + esc(t('keepTools')) + '</span></label>' +
-    '<span class="note">' + esc(t('boolNote')) + '</span></fieldset>';
-  h += '<fieldset><legend>' + esc(t('opEdges')) + '</legend><div class="grid2">' + num('fr', t('sizeMm')) +
+    '<div class="btnrow">' + btn('rot', 'rotate', t('doRotate'), n) + '</div>' + chk('copy', t('asCopy')) +
+    '<div class="btnrow"><button class="btn sm" data-op="floor"' + (n ? '' : ' disabled') + '>' + esc(t('toFloor')) + '</button><button class="btn sm" data-op="center"' + (n ? '' : ' disabled') + '>' + esc(t('toCenter')) + '</button></div>');
+  h += sec('pattern', t('opPattern'), '<div class="grid2">' + num('n', t('count'), 1) + '<span></span></div><div class="grid3">' + num('px', t('stepX')) + num('py', t('stepY')) + num('pz', t('stepZ')) + '</div>' + chk('pfuse', t('fuseResult')) +
+    '<div class="btnrow">' + btn('pattern', 'pattern', t('makePattern'), n) + '</div>');
+  h += sec('cpattern', t('opCPattern'), '<div class="grid2">' + num('cn', t('count'), 1) + num('cang', t('totalAngle')) +
+    '<label>' + esc(t('axis')) + '<select class="sel" data-ov="cax"><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select></label>' +
+    '<label>' + esc(t('through')) + '<select class="sel" data-ov="ccenter"><option value="origin">' + esc(t('thOrigin')) + '</option><option value="center">' + esc(t('thCenter')) + '</option></select></label></div>' + chk('cfuse', t('fuseResult')) +
+    '<div class="btnrow">' + btn('cpattern', 'cpattern', t('makePattern'), n) + '</div><span class="note">' + esc(t('cpatNote')) + '</span>');
+  h += sec('mirror', t('opMirror'), '<div class="grid2"><label>' + esc(t('plane')) + '<select class="sel" data-ov="mplane"><option value="yz">YZ (X→−X)</option><option value="xz">XZ (Y→−Y)</option><option value="xy">XY (Z→−Z)</option><option value="face">' + esc(t('mFace')) + '</option></select></label>' +
+    '<label>' + esc(t('through')) + '<select class="sel" data-ov="mcenter"><option value="origin">' + esc(t('thOrigin')) + '</option><option value="center">' + esc(t('thCenter')) + '</option></select></label></div>' + chk('mcopy', t('asCopy')) +
+    '<div class="btnrow">' + btn('mirror', 'mirror', t('doMirror'), n) + '</div><span class="note">' + esc(t('mirrorNote')) + '</span>');
+  h += sec('bool', t('opBool'), '<div class="btnrow">' + btn('fuse', 'union', t('fuse'), n >= 2) + btn('cut', 'subtract', t('cut'), n >= 2) + btn('common', 'intersect', t('common'), n >= 2) + '</div>' + chk('keepTools', t('keepTools')) + '<span class="note">' + esc(t('boolNote')) + '</span>');
+  h += sec('edges', t('opEdges'), '<div class="grid2">' + num('fr', t('sizeMm')) +
     '<label>' + esc(t('edges')) + '<select class="sel" data-ov="fmode"><option value="all">' + esc(t('eAll')) + '</option><option value="faces">' + esc(t('eFaces')) + '</option><option value="vertical">' + esc(t('eVert')) + '</option><option value="horizontal">' + esc(t('eHor')) + '</option></select></label></div>' +
-    '<div class="btnrow"><button class="btn" data-op="fillet"' + dis(n === 1) + ' data-ic="fillet"><span>' + esc(t('fillet')) + '</span></button><button class="btn" data-op="chamfer"' + dis(n === 1) + ' data-ic="chamfer"><span>' + esc(t('chamfer')) + '</span></button></div>' +
-    '<span class="note">' + esc(t('edgeNote')) + '</span></fieldset>';
-  h += '<fieldset><legend>' + esc(t('opPattern')) + '</legend><div class="grid2">' + num('n', t('count'), 1) + '<span></span></div><div class="grid3">' + num('px', t('stepX')) + num('py', t('stepY')) + num('pz', t('stepZ')) + '</div>' +
-    '<div class="btnrow"><button class="btn" data-op="pattern"' + dis(n) + ' data-ic="pattern"><span>' + esc(t('makePattern')) + '</span></button></div></fieldset>';
-  h += '<fieldset><legend>' + esc(t('opMirror')) + '</legend><div class="grid2"><label>' + esc(t('plane')) + '<select class="sel" data-ov="mplane"><option value="yz">YZ (X→−X)</option><option value="xz">XZ (Y→−Y)</option><option value="xy">XY (Z→−Z)</option></select></label>' +
-    '<label>' + esc(t('through')) + '<select class="sel" data-ov="mcenter"><option value="origin">' + esc(t('thOrigin')) + '</option><option value="center">' + esc(t('thCenter')) + '</option></select></label></div>' +
-    '<label class="frow chk"><input type="checkbox" data-ovc="mcopy"' + (opv.mcopy ? ' checked' : '') + '><span>' + esc(t('asCopy')) + '</span></label>' +
-    '<div class="btnrow"><button class="btn" data-op="mirror"' + dis(n) + ' data-ic="mirror"><span>' + esc(t('doMirror')) + '</span></button></div></fieldset>';
-  h += '<fieldset><legend>' + esc(t('opScale')) + '</legend><div class="grid2">' + num('k', t('factor')) + '<span></span></div><div class="btnrow"><button class="btn sm" data-sk="25.4">inch → mm</button><button class="btn sm" data-sk="1000">m → mm</button><button class="btn sm" data-sk="10">cm → mm</button></div>' +
-    '<div class="btnrow"><button class="btn" data-op="scale"' + dis(n) + ' data-ic="scale"><span>' + esc(t('doScale')) + '</span></button></div></fieldset>';
-  h += '<fieldset><legend>' + esc(t('opMore')) + '</legend><div class="btnrow">' +
-    '<button class="btn" data-op="tobrep"' + dis(hasMesh) + '><span>' + esc(t('meshToBrep')) + '</span></button>' +
-    '<button class="btn" data-op="dup"' + dis(n) + ' data-ic="dup"><span>' + esc(t('duplicate')) + '</span></button>' +
-    '<button class="btn danger" data-op="del"' + dis(n) + ' data-ic="trash"><span>' + esc(t('delete')) + '</span></button></div></fieldset>';
+    '<div class="btnrow">' + btn('fillet', 'fillet', t('fillet'), n === 1) + btn('chamfer', 'chamfer', t('chamfer'), n === 1) + '</div><span class="note">' + esc(t('edgeNote')) + '</span>');
+  h += sec('scale', t('opScale'), '<div class="grid2">' + num('k', t('factor')) + '<span></span></div><div class="btnrow"><button class="btn sm" data-sk="25.4">inch → mm</button><button class="btn sm" data-sk="1000">m → mm</button><button class="btn sm" data-sk="10">cm → mm</button></div>' +
+    '<div class="btnrow">' + btn('scale', 'scale', t('doScale'), n) + '</div>');
+  h += sec('more', t('opMore'), '<div class="btnrow">' + btn('tobrep', '', t('meshToBrep'), hasMesh) + btn('dup', 'dup', t('duplicate'), n) + btn('del', 'trash', t('delete'), n, 'danger') + '</div>');
+  const top = p.scrollTop;
   p.innerHTML = h;
   applyStatic(p);
+  p.scrollTop = top;
   p.querySelectorAll('[data-ov]').forEach((i) => {
     if (i.tagName === 'SELECT') i.value = opv[i.dataset.ov];
     i.addEventListener('change', () => { opv[i.dataset.ov] = i.tagName === 'SELECT' ? i.value : Number(i.value); });
@@ -1229,6 +1212,44 @@ async function runOp(op) {
       const k = Number(opv.k); if (!(k > 0) || k === 1) return;
       await applyM(new THREE.Matrix4().makeScale(k, k, k), false); fitView(); break;
     }
+    case 'pull': {
+      const faces = sel.filter((x) => x.f != null);
+      if (!faces.length) { toast(t('pickFacesFirst'), 'warn'); return; }
+      const byB = new Map(); faces.forEach((x) => { if (!byB.has(x.b)) byB.set(x.b, []); byB.get(x.b).push(x.f); });
+      const out = await withBusy(t('working'), async () => {
+        const list = [];
+        for (const [id, fl] of byB) {
+          const b = bodyById(id);
+          if (b.kind !== 'brep' || !b.sid) throw new Error(t('skFaceBrep'));
+          // one face at a time: indices change after each operation, so only the first face per body
+          const r = await kcall('faceExtrude', { sid: b.sid, face: fl[0], dist: Number(opv.pull) || 1, quality: S.quality });
+          list.push(Object.assign({}, b, { sid: track(r.sid), mesh: r.mesh, faceColors: {} }));
+        }
+        return list;
+      });
+      if (!out) return;
+      commit(replaceBodies(new Set(out.map((b) => b.id)), out));
+      setSel(out.map((b) => ({ b: b.id, f: null })));
+      break;
+    }
+    case 'cpattern': {
+      const N = Math.max(2, Math.min(360, Math.round(opv.cn || 2)));
+      const total = Number(opv.cang) || 360;
+      const step = Math.abs(total) >= 360 ? total / N : total / (N - 1);
+      const ax = { x: V(1, 0, 0), y: V(0, 1, 0), z: V(0, 0, 1) }[opv.cax];
+      const c0 = opv.ccenter === 'center' ? ctr : V(0, 0, 0);
+      const out = [];
+      const res = await withBusy(t('working'), async () => {
+        for (let i = 1; i < N; i++) {
+          const m = new THREE.Matrix4().makeTranslation(c0.x, c0.y, c0.z).multiply(new THREE.Matrix4().makeRotationAxis(ax, THREE.MathUtils.degToRad(step * i))).multiply(new THREE.Matrix4().makeTranslation(-c0.x, -c0.y, -c0.z));
+          const moved = await transformBodies(bs, m);
+          moved.forEach((b) => out.push(Object.assign({}, b, { id: newId(), name: b.name + ' [' + (i + 1) + ']' })));
+        }
+        return true;
+      });
+      if (res) await addPattern(bs, out, opv.cfuse);
+      break;
+    }
     case 'pattern': {
       const N = Math.max(2, Math.min(500, Math.round(opv.n || 2)));
       const out = [];
@@ -1239,16 +1260,25 @@ async function runOp(op) {
         }
         return true;
       });
-      if (res) commit(Object.assign({}, state, { bodies: state.bodies.concat(out) }));
+      if (res) await addPattern(bs, out, opv.pfuse);
       break;
     }
     case 'mirror': {
-      const n = { yz: [1, 0, 0], xz: [0, 1, 0], xy: [0, 0, 1] }[opv.mplane];
-      const pnt = opv.mcenter === 'center' ? [ctr.x, ctr.y, ctr.z] : [0, 0, 0];
-      const moved = await withBusy(t('working'), () => transformBodies(bs, null, { mirror: { p: pnt, n } }));
+      let n = { yz: [1, 0, 0], xz: [0, 1, 0], xy: [0, 0, 1] }[opv.mplane];
+      let pnt = opv.mcenter === 'center' ? [ctr.x, ctr.y, ctr.z] : [0, 0, 0];
+      if (opv.mplane === 'face') {
+        const fs = sel.find((x) => x.f != null);
+        const fb = fs && bodyById(fs.b);
+        if (!fb || fb.kind !== 'brep') { toast(t('mirrorPickFace'), 'warn'); return; }
+        const fp = await withBusy(t('working'), () => kcall('facePlane', { sid: fb.sid, face: fs.f }));
+        if (!fp || !fp.planar) { toast(t('skNotPlanar'), 'warn'); return; }
+        n = fp.n; pnt = fp.o;
+      }
+      const mb = opv.mplane === 'face' && sel.some((x) => x.f == null) ? bs.filter((b) => sel.some((x) => x.b === b.id && x.f == null)) : bs;
+      const moved = await withBusy(t('working'), () => transformBodies(mb, null, { mirror: { p: pnt, n } }));
       if (!moved) return;
       if (opv.mcopy) { const c = copyOf(moved).map((b) => Object.assign(b, { name: b.name.replace(' ' + t('copySuffix'), ' ' + t('mirrorSuffix')) })); commit(Object.assign({}, state, { bodies: state.bodies.concat(c) })); }
-      else commit(replaceBodies(new Set(bs.map((b) => b.id)), moved));
+      else commit(replaceBodies(new Set(mb.map((b) => b.id)), moved));
       break;
     }
     case 'fuse': case 'cut': case 'common': {
@@ -1296,6 +1326,19 @@ async function runOp(op) {
     case 'dup': duplicate(); break;
     case 'del': deleteSel(); break;
   }
+}
+// copies of a pattern: new bodies, or fused into the original body
+async function addPattern(src, copies, fuse) {
+  if (!fuse || src.length !== 1) { commit(Object.assign({}, state, { bodies: state.bodies.concat(copies) })); return; }
+  const b = src[0];
+  const r = await withBusy(t('working'), async () => {
+    const a = await ensureBrep(b);
+    const others = [];
+    for (const c of copies) others.push(await ensureBrep(c));
+    return kcall('boolean', { op: 'fuse', a, b: others, quality: S.quality });
+  });
+  if (!r) return;
+  commit(replaceBodies(new Set([b.id]), [Object.assign({}, b, { kind: 'brep', sid: track(r.sid), mesh: r.mesh, faceColors: {} })]));
 }
 // mesh body -> exact body (faceted) when an operation needs OCCT
 async function ensureBrep(b, keepMesh) {
@@ -1348,7 +1391,7 @@ function renderSettings() {
   }));
 }
 async function settingChanged(k) {
-  if (k === 'lang') { applyStatic(); renderAll(); setK(K.state); showHint(); return; }
+  if (k === 'lang') { applyStatic(); renderAll(); setK(K.state); showHint(); renderSettings(); return; }
   if (k === 'theme' || k === 'bg') { applyTheme(); return; }
   if (k === 'edges') refreshLooks();
   if (k === 'grid' && grid) grid.visible = !!S.grid;
@@ -1382,14 +1425,36 @@ function applyTheme() {
 }
 
 // ---------------- panels, layout ----------------
+// right panel: tabs (appearance / create / operations); settings and the sketch open on top of them, like in BoardV
+const RV = { set: false };
+function rightView() {
+  const over = RV.set || SK.on;
+  document.querySelector('.tabs').hidden = over;
+  $('paneLook').hidden = over || S.tab !== 'look'; $('paneCreate').hidden = over || S.tab !== 'create'; $('paneOps').hidden = over || S.tab !== 'ops';
+  $('setWrap').hidden = !RV.set; $('skWrap').hidden = !SK.on || RV.set;
+  document.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
+  $('bSettings').setAttribute('aria-pressed', String(RV.set));
+}
 function showTab(name) {
+  if (name === 'sketch') { RV.set = false; if (!S.right) { S.right = true; layout(); } rightView(); return; }
+  if (name === 'set') { openSettings(); return; }
   S.tab = name; saveS();
-  document.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
-  document.querySelector('.tab[data-tab=set]').hidden = name !== 'set';
-  $('paneLook').hidden = name !== 'look'; $('paneCreate').hidden = name !== 'create'; $('paneOps').hidden = name !== 'ops'; $('paneSet').hidden = name !== 'set';
+  if (RV.set) RV.set = false;
+  rightView();
   if (name === 'ops') renderOps();
-  if (name === 'set') renderSettings();
-  $('bSettings').setAttribute('aria-pressed', String(name === 'set'));
+}
+function openSettings() { RV.set = true; if (!S.right) { S.right = true; layout(); } renderSettings(); rightView(); $('paneSet').scrollTop = 0; }
+function closeSettings() { RV.set = false; rightView(); }
+// show one section of the operations pane (from the command bar)
+function focusOp(key) {
+  if (SK.on) return;
+  if (!S.right) { S.right = true; layout(); }
+  showTab('ops');
+  const el = $('op-' + key);
+  if (!el) return;
+  el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  if (!selBodies().length) toast(t('opsSelect'), 'warn');
 }
 function layout() {
   const m = $('main');
@@ -1407,7 +1472,7 @@ function splitter(el, key, sign) {
     el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up);
   });
 }
-function renderAll() { renderTree(); renderProps(); renderLook(); renderCreate(); renderOps(); if (S.tab === 'set') renderSettings(); updateStatus(); }
+function renderAll() { renderTree(); renderProps(); renderLook(); renderCreate(); renderOps(); if (RV.set) renderSettings(); if (SK.on) renderSketchPane(); renderCmdBar(); updateStatus(); }
 
 // views popup
 function viewsMenu(x, y) {
@@ -1425,6 +1490,9 @@ document.addEventListener('keydown', (e) => {
   const tag = (e.target && e.target.tagName) || '';
   if (/INPUT|SELECT|TEXTAREA/.test(tag) && e.key !== 'Escape') return;
   const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (k === 'escape' && !menu.hidden) { hideMenu(); e.preventDefault(); return; }
+  if (SK.on) { if (sketchKey(e)) { e.preventDefault(); return; } if (!ctrl && !['f'].includes(k)) return; }
+  if (k === 'escape' && RV.set) { closeSettings(); e.preventDefault(); return; }
   if (ctrl && e.shiftKey && k === 'c') { e.preventDefault(); copyLook(); return; }
   if (ctrl && e.shiftKey && k === 'v') { e.preventDefault(); pasteLook(); return; }
   if (ctrl && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
@@ -1437,7 +1505,8 @@ document.addEventListener('keydown', (e) => {
   if (ctrl && /^[1-7]$/.test(e.key)) { e.preventDefault(); setView(['front', 'back', 'left', 'right', 'top', 'bottom', 'iso'][Number(e.key) - 1]); return; }
   if (ctrl || e.altKey) return;
   switch (k) {
-    case 'escape': hideMenu(); if (tool !== 'select') setTool('select'); else setSel([]); clearMeasure(); break;
+    case 'escape': hideMenu(); if (tool === 'measure' && MS.a) clearMeasure(); else if (tool !== 'select') setTool('select'); else setSel([]); break;
+    case 'k': startSketchMenu(); break;
     case 'delete': case 'backspace': deleteSel(); break;
     case 'f': fitView(null, e.shiftKey); break;
     case 'q': setTool('select'); break;
@@ -1465,8 +1534,10 @@ function wire() {
   $('bUndo').addEventListener('click', undo);
   $('bRedo').addEventListener('click', redo);
   $('bRight').addEventListener('click', () => { S.right = !S.right; layout(); });
-  $('bTheme').addEventListener('click', () => { S.theme = S.theme === 'light' ? 'dark' : 'light'; saveS(); applyTheme(); if (S.tab === 'set') renderSettings(); });
-  $('bSettings').addEventListener('click', () => { if (!S.right) { S.right = true; layout(); } showTab(S.tab === 'set' ? 'look' : 'set'); });
+  $('bTheme').addEventListener('click', () => { S.theme = S.theme === 'light' ? 'dark' : 'light'; saveS(); applyTheme(); if (RV.set) renderSettings(); });
+  $('bSettings').addEventListener('click', () => { if (RV.set) closeSettings(); else openSettings(); });
+  $('setClose').addEventListener('click', closeSettings);
+  $('skClose').addEventListener('click', () => { if (!SK.ents.length || confirm(t('skConfirmExit'))) endSketch(); });
   document.querySelectorAll('#toolBar [data-tool]').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
   document.querySelectorAll('#filterSeg [data-f]').forEach((b) => b.addEventListener('click', () => setFilter(b.dataset.f)));
   document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
@@ -1480,7 +1551,9 @@ function wire() {
 
 // small hook for automated tests and the console
 window.__tdv = {
-  get state() { return state; }, get sel() { return sel; }, kcall,
+  get state() { return state; }, get sel() { return sel; }, kcall, get SK() { return SK; }, get MS() { return MS; },
+  skScreen(x, y) { const r = renderer.domElement.getBoundingClientRect(); const s = screenOfL([x, y]); return [r.left + s[0], r.top + s[1]]; },
+  worldScreen(x, y, z) { const r = renderer.domElement.getBoundingClientRect(); const v = new THREE.Vector3(x, y, z).project(cam); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   screenOf(id) { const o = objs.get(id); if (!o) return null; const c = new THREE.Box3().setFromObject(o.mesh).getCenter(new THREE.Vector3()).project(cam); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (c.x + 1) / 2 * r.width, r.top + (1 - c.y) / 2 * r.height]; },
 };
 
@@ -1490,7 +1563,8 @@ function boot() {
   applyTheme();
   layout();
   renderAll();
-  showTab(S.tab === 'set' ? 'look' : S.tab);
+  if (!['look', 'create', 'ops'].includes(S.tab)) S.tab = 'look';
+  showTab(S.tab);
   setFilter(S.filter);
   setTool('select');
   $('vProj').setAttribute('aria-pressed', String(!S.persp));

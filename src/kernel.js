@@ -38,7 +38,7 @@ function createKernel(R, oc, occti) {
     try { e = shape.meshEdges({ tolerance: tol, angularTolerance: q[1] }); } catch (err) { /* no edges (mesh body) */ }
     return {
       position: Float32Array.from(m.vertices), normal: Float32Array.from(m.normals), index: Uint32Array.from(m.triangles),
-      groups: m.faceGroups.map((g, i) => [g.start, g.count, i]), edges: Float32Array.from(e.lines),
+      groups: m.faceGroups.map((g, i) => [g.start, g.count, i]), edges: Float32Array.from(e.lines), edgeGroups: (e.edgeGroups || []).map((g) => [g.start, g.count]),
       bbox: b,
     };
   }
@@ -474,6 +474,78 @@ function createKernel(R, oc, occti) {
     const s = cast(oc.BRepToolsWrapper.Read(text));
     const mesh = meshOf(s, quality);
     return { result: { sid: put(s), mesh }, transfer: transferables(mesh) };
+  };
+
+
+  // ---------- sketch -> solid ----------
+  // loops: {t:'rect',x,y,w,h} | {t:'circle',x,y,r} | {t:'poly',x,y,r,n,a} | {t:'path',pts:[[x,y]...],arcs:{i:[mx,my]}}; hole:true cuts
+  function loopDrawing(L) {
+    let d;
+    if (L.t === 'rect') d = R.drawRectangle(Math.abs(L.w), Math.abs(L.h)).translate(L.x + L.w / 2, L.y + L.h / 2);
+    else if (L.t === 'circle') d = R.drawCircle(L.r).translate(L.x, L.y);
+    else if (L.t === 'poly') { d = R.drawPolysides(L.r, Math.max(3, Math.round(L.n))); if (L.a) d = d.rotate(L.a, [0, 0]); d = d.translate(L.x, L.y); }
+    else {
+      const P = L.pts, arcs = L.arcs || {};
+      let pen = R.draw(P[0]);
+      for (let i = 1; i < P.length; i++) {
+        if (arcs[i]) pen = pen.threePointsArcTo(P[i], arcs[i]); else pen = pen.lineTo(P[i]);
+      }
+      if (arcs.close) d = pen.threePointsArcTo(P[0], arcs.close).done();
+      else d = pen.close();
+    }
+    return d;
+  }
+  function vec(a) { return [a[0], a[1], a[2]]; }
+  H.sketchSolid = ({ plane, loops, op, dist, dir, axis, angle, quality }) => {
+    if (!loops.length) throw new Error('empty sketch');
+    let draw = null;
+    loops.filter((l) => !l.hole).forEach((l) => { const d = loopDrawing(l); draw = draw ? draw.fuse(d) : d; });
+    if (!draw) throw new Error('no outer contour');
+    loops.filter((l) => l.hole).forEach((l) => { draw = draw.cut(loopDrawing(l)); });
+    const n = plane.n, D = Number(dist) || 10;
+    let o = vec(plane.o);
+    let s;
+    if (op === 'revolve') {
+      const pl = new R.Plane(o, vec(plane.x), vec(n));
+      const ax = axis === 'x' ? plane.x : [n[1] * plane.x[2] - n[2] * plane.x[1], n[2] * plane.x[0] - n[0] * plane.x[2], n[0] * plane.x[1] - n[1] * plane.x[0]];
+      s = draw.sketchOnPlane(pl).revolve(vec(ax), { origin: o, angle: Number(angle) || 360 });
+    } else {
+      if (dir === 'both') o = [o[0] - n[0] * D / 2, o[1] - n[1] * D / 2, o[2] - n[2] * D / 2];
+      const pl = new R.Plane(o, vec(plane.x), vec(n));
+      const sk = draw.sketchOnPlane(pl);
+      s = dir === 'reverse' ? sk.extrude(D, { extrusionDirection: [-n[0], -n[1], -n[2]] }) : sk.extrude(D);
+    }
+    const mesh = meshOf(s, quality);
+    return { result: { sid: put(s), mesh }, transfer: transferables(mesh) };
+  };
+
+  // plane of a planar face (for sketching on it): origin = face centre, normal outward
+  H.facePlane = ({ sid, face }) => {
+    const f = get0(sid).faces[face];
+    if (!f) throw new Error('face not found');
+    if (f.geomType !== 'PLANE') return { result: { planar: false } };
+    const c = f.center, nv = f.normalAt(c);
+    const n = [nv.x, nv.y, nv.z];
+    // x direction: world X projected on the plane, or world Y if the face looks along X
+    let x = Math.abs(n[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0];
+    const k = x[0] * n[0] + x[1] * n[1] + x[2] * n[2];
+    x = [x[0] - k * n[0], x[1] - k * n[1], x[2] - k * n[2]];
+    const l = Math.hypot(x[0], x[1], x[2]); x = x.map((v) => v / l);
+    return { result: { planar: true, o: [c.x, c.y, c.z], n, x } };
+  };
+
+  // push/pull a planar face: positive adds material, negative removes it
+  H.faceExtrude = ({ sid, face, dist, quality }) => {
+    const s = get(sid);
+    const f = s.faces[face];
+    if (!f) throw new Error('face not found');
+    const nv = f.normalAt(f.center);
+    const d = Number(dist) || 1;
+    const prism = R.basicFaceExtrusion(f, new R.Vector([nv.x * d, nv.y * d, nv.z * d]));
+    let r = d > 0 ? s.fuse(prism) : s.cut(prism);
+    try { r = r.simplify(); } catch (e) { /* keep */ }
+    const mesh = meshOf(r, quality);
+    return { result: { sid: put(r), mesh }, transfer: transferables(mesh) };
   };
 
   H.free = ({ sids }) => {
