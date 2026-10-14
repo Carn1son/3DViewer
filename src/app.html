@@ -259,6 +259,21 @@ html[data-ui=light] .mlabel.mx { color: #b0302a; } html[data-ui=light] .mlabel.m
 .entt .eye { margin-left: auto; }
 .skplanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 body.sketching .vtools #vProj, body.sketching #toolBar, body.sketching #filterSeg { opacity: .35; pointer-events: none; }
+.upd { display: grid; gap: 8px; }
+.updmini { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--panel2) 70%, transparent); border: 1px solid var(--line); }
+.updmini .upd { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.updmini .upd .ln { flex: 1 1 140px; }
+.updmini .upd .bar { flex: 1 1 100%; }
+.updmini .mchk { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.updmini .mchk input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+.upd .ln { font-size: 12.5px; }
+.upd .ok { color: var(--muted); }
+.upd .bad { color: var(--danger); overflow-wrap: anywhere; }
+.upd .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.upd .bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.updbar { position: absolute; right: 14px; bottom: 14px; z-index: 5; width: min(340px, calc(100% - 28px)); box-sizing: border-box; padding: 12px 40px 12px 14px; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / .45); }
+.updbar b { display: block; font-family: var(--f-display); font-size: 15px; margin-bottom: 6px; }
+.updbar .x { position: absolute; top: 6px; right: 6px; width: 28px; height: 26px; padding: 0; justify-content: center; }
 </style>
 <div class="app" id="app">
   <header class="top">
@@ -317,6 +332,7 @@ body.sketching .vtools #vProj, body.sketching #toolBar, body.sketching #filterSe
         </span>
       </div>
       <div class="hint" id="hint" hidden></div>
+      <div class="updbar" id="updBar" role="status" hidden></div>
       <div class="busy" id="busy" hidden><div class="bx"><i class="spin"></i><span id="busyText"></span></div></div>
     </section>
     <div class="split" id="splitR" role="separator" aria-orientation="vertical"></div>
