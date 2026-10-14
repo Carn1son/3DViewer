@@ -1,6 +1,11 @@
-# 3DViewer
+<p align="center"><img src="docs/logo.png" width="300" alt="3DViewer — CAD для самых маленьких"></p>
 
-Простая программа для 3D: открыть модель почти любого формата, раскрасить (в том числе перенести цвет с одной модели на другую, как Copy/Paste Appearance в SolidWorks), сделать несложную деталь и сохранить в STEP с цветами.
+<p align="center">Простая программа для 3D на ПК: открыть модель почти любого формата, раскрасить, сделать несложную деталь и сохранить в STEP с цветами.</p>
+
+<p align="center">
+  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-Setup.exe"><b>Windows — установщик</b></a> ·
+  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-portable.exe"><b>Windows — без установки</b></a>
+</p>
 
 ## Возможности
 - **Открытие:** STEP/STP, IGES/IGS, BREP — точная геометрия (OpenCascade); STL, OBJ+MTL, GLB/GLTF, FBX, DAE, 3DS, PLY, 3MF, AMF, VRML/WRL, OFF, VTK, USDZ, LWO, KMZ, PCD, XYZ; проект `.3dv`. Несколько файлов — в одну сцену.
