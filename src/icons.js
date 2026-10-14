@@ -1,6 +1,16 @@
 /* Stroke icons, 24x24 (Lucide-style paths, ISC licence). */
 var IC = (function () {
   var P = {
+    sketch: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M3 9V5a2 2 0 0 1 2-2h4"/>',
+    pull: '<path d="M3 15h18v6H3z"/><path d="M12 12V3M8 7l4-4 4 4"/>',
+    cpattern: '<circle cx="12" cy="4.5" r="2"/><circle cx="19.5" cy="12" r="2"/><circle cx="12" cy="19.5" r="2"/><circle cx="4.5" cy="12" r="2"/><path d="M8 6.5a8 8 0 0 1 8 0M17.5 8a8 8 0 0 1 0 8M16 17.5a8 8 0 0 1-8 0M6.5 16a8 8 0 0 1 0-8" stroke-dasharray="1.5 2"/>',
+    line: '<path d="M4 20 20 4"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="4" r="1.6"/>',
+    arc: '<path d="M4 20a16 16 0 0 1 16-16"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="4" r="1.6"/>',
+    rect: '<rect x="3" y="6" width="18" height="12" rx="1"/>',
+    circle: '<circle cx="12" cy="12" r="8"/><path d="M12 12h8"/><circle cx="12" cy="12" r="1"/>',
+    polygon: '<path d="M12 3l8 5v8l-8 5-8-5V8z"/>',
+    revolve: '<path d="M12 3v18"/><path d="M5 8c-2 1-3 2.5-3 4 0 3 4.5 5 10 5s10-2 10-5c0-1.5-1-3-3-4"/><path d="M19 16l2 1-1 2"/>',
+    exit: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     folder: '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     filePlus: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/>',
     save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>',
