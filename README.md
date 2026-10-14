@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/logo.png" width="300" alt="3DViewer — CAD для самых маленьких"></p>
+<p align="center"><img src="docs/logo.png" width="640" alt="3DViewer — CAD для самых маленьких"></p>
 
 <p align="center">Простая программа для 3D на ПК: открыть модель почти любого формата, раскрасить, сделать несложную деталь и сохранить в STEP с цветами.</p>
 
