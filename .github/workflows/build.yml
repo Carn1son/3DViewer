@@ -3,6 +3,7 @@ name: Build 3DViewer
 on:
   push:
     branches: [ main ]
+    paths-ignore: [ 'README.md', 'docs/**' ]
   workflow_dispatch:
 
 permissions:
@@ -89,6 +90,7 @@ jobs:
           set -e
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
           printf '%s\n' "3DViewer $LABEL от $DAY." "" "Всегда последняя версия:" "- Windows, установщик: $BASE/3DViewer-Setup.exe" "- Windows, без установки: $BASE/3DViewer-portable.exe" > notes.md
+          gh release delete "v$VER" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true  # same version rebuilt: replace it
           gh release create "v$VER" dl/3DViewer-windows/* --repo "$GITHUB_REPOSITORY" --title "3DViewer $LABEL — $DAY" --notes-file notes.md --latest
       - name: Keep only the newest release
         env:
