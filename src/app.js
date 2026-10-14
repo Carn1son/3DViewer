@@ -1377,7 +1377,8 @@ function renderSettings() {
     ['Ctrl+O', 'open'], ['Ctrl+S', 'saveProject'], ['Ctrl+E', 'export'], ['Ctrl+Z / Ctrl+Y', 'undoRedo'], ['Q', 'toolSelect'], ['I', 'toolPick'], ['B', 'toolPaint'], ['Alt+' + t('click'), 'altPick'], ['Shift+' + t('click'), 'shiftPaint'],
     ['T / R', 'moveRotate'], ['M', 'toolMeasure'], ['G', 'filterToggle'], ['Ctrl+Shift+C / V', 'copyPaste'], ['F', 'fit'], ['Ctrl+1…7', 'views'], ['H / Shift+H', 'hideShow'], ['Ctrl+D', 'duplicate'], ['F2', 'rename'], ['Del', 'delete'], [t('dblclick'), 'pivotKey'],
   ].map(([k, l]) => '<kbd>' + esc(k) + '</kbd><span>' + esc(t(l)) + '</span>').join('') + '</div><span class="note">' + esc(t('mouseNote')) + '</span></fieldset>';
-  h += '<fieldset><legend>' + esc(t('about')) + '</legend><div><b>3DViewer ' + esc(VLABEL) + '</b> <span class="note">' + esc(t('fromDate', VDATE)) + '</span></div>' +
+  const BI = window.TDV_BUILD && window.TDV_BUILD.app !== 'web' ? window.TDV_BUILD : null;
+  h += '<fieldset><legend>' + esc(t('about')) + '</legend><div><b>3DViewer ' + esc(BI ? BI.label : VLABEL) + '</b> <span class="note">' + esc(t('fromDate', BI ? BI.day : VDATE)) + '</span></div>' + updatesBlock() +
     '<span class="note">' + esc(t('aboutText')) + '</span>' +
     '<div class="links"><a class="lk" href="' + GITHUB + '/releases" target="_blank" rel="noopener">' + IC.svg('github') + '<span><b>GitHub</b><small>Carn1son/3DViewer</small></span></a>' +
     '<a class="lk" href="' + TELEGRAM + '" target="_blank" rel="noopener">' + IC.svg('telegram') + '<span><b>Telegram</b><small>@carnison</small></span></a></div>' +
