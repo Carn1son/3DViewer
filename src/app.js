@@ -1560,10 +1560,15 @@ function modeMenu(x, y) {
 }
 
 // ---------------- keyboard ----------------
+// letters by their physical key, so shortcuts work in any layout (Ctrl+Z is Ctrl+Я in Russian)
+function keyOf(e) { return e.code && /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : String(e.key || '').toLowerCase(); }
 document.addEventListener('keydown', (e) => {
   const tag = (e.target && e.target.tagName) || '';
-  if (/INPUT|SELECT|TEXTAREA/.test(tag) && e.key !== 'Escape') return;
-  const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  const undoKey = (e.ctrlKey || e.metaKey) && /^Key[ZY]$/.test(e.code || '');
+  // number fields have nothing worth undoing inside them: Ctrl+Z / Ctrl+Y there undo the model, like everywhere else
+  if (undoKey && e.target && e.target.type === 'number') e.target.blur();
+  else if (/INPUT|SELECT|TEXTAREA/.test(tag) && e.key !== 'Escape') return;
+  const ctrl = e.ctrlKey || e.metaKey, k = keyOf(e);
   if (k === 'escape' && !menu.hidden) { hideMenu(); e.preventDefault(); return; }
   if (SK.on) { if (sketchKey(e)) { e.preventDefault(); return; } if (!ctrl && !['f'].includes(k)) return; }
   if (k === 'escape' && RV.set) { closeSettings(); e.preventDefault(); return; }
