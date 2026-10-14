@@ -1,0 +1,296 @@
+<title>3DViewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<style>
+/* Layout follows BoardV: slim top bar, tree and properties on the left, the 3D view fills the rest, tools on the right, status line at the bottom.
+   BoardV's amber accent becomes green; dark theme by default, light theme in the settings. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d0d; --panel: #131716; --panel2: #191e1c; --fg: #e4ebe7; --muted: #8b9a93; --line: #27302c;
+  --accent: #3fd07a; --accent-fg: #04140a; --danger: #e8665a;
+  --view-a: #2b3230; --view-b: #121615; --edge: #0c0f0e; --hl: #3fd07a; --hover: #9be7b9;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+html[data-ui=light] { color-scheme: light; --bg: #e9edeb; --panel: #ffffff; --panel2: #f2f4f3; --fg: #18201c; --muted: #5b6862; --line: #d2d9d5;
+  --accent: #16a34a; --accent-fg: #ffffff; --view-a: #f4f7f6; --view-b: #b9c4c0; --edge: #1d2321; --hl: #16a34a; --hover: #0f7a37; }
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 13px; line-height: 1.4; overflow: hidden; }
+button { font: inherit; }
+.app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: inline-flex; align-items: center; gap: 7px; font-family: var(--f-display); font-size: 16px; letter-spacing: .06em; white-space: nowrap; margin-right: 4px; }
+.logo { display: block; width: 26px; height: 26px; background: url(__LOGO__) center / contain no-repeat; flex: none; }
+.vsep { width: 1px; height: 22px; background: var(--line); flex: none; }
+.btn { font-weight: 500; padding: 6px 11px; border-radius: 5px; border: 1px solid var(--line); background: var(--panel2); color: var(--fg); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.btn svg { width: 16px; height: 16px; flex: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn:hover:not(:disabled) { filter: brightness(1.12); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.sm { padding: 3px 8px; font-size: 12px; }
+.btn.ico { width: 34px; height: 32px; padding: 0; justify-content: center; }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.btn:focus-visible, .tbtn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tools { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel2); }
+.tbtn { width: 32px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--fg); cursor: pointer; display: inline-grid; place-items: center; position: relative; }
+.tbtn svg { width: 18px; height: 18px; }
+.tbtn:hover { color: var(--accent); }
+.tbtn[aria-pressed=true] { background: var(--accent); color: var(--accent-fg); }
+.tbtn:disabled { opacity: .4; cursor: default; color: var(--fg); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg button { padding: 5px 10px; border: 0; background: var(--panel2); color: var(--fg); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-fg); }
+.spacer { flex: 1 1 auto; }
+.fileName { color: var(--muted); font-family: var(--f-mono); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30ch; }
+
+.main { --lw: 300px; --rw: 330px; display: grid; grid-template-columns: var(--lw) 6px minmax(0, 1fr) 6px var(--rw); min-height: 0; }
+.main.noright { grid-template-columns: var(--lw) 6px minmax(0, 1fr) 0 0; }
+.main.noright .rpanel, .main.noright #splitR { display: none; }
+.split { cursor: col-resize; background: var(--line); position: relative; touch-action: none; }
+.split::after { content: ""; position: absolute; inset: 0 -4px; }
+.split:hover, .split.on { background: var(--accent); }
+.side, .rpanel { background: var(--panel); display: grid; min-height: 0; min-width: 0; }
+.side { grid-template-rows: auto minmax(0, 1fr) auto; border-right: 1px solid var(--line); }
+.rpanel { grid-template-rows: auto minmax(0, 1fr); border-left: 1px solid var(--line); overflow: hidden; }
+.phead { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); min-height: 32px; }
+.phead b { font-family: var(--f-display); font-size: 15px; letter-spacing: .03em; }
+.phead .cnt { margin-left: auto; color: var(--muted); font-family: var(--f-mono); font-size: 12px; }
+.tabs { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+.tab { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 4px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; font-weight: 600; }
+.tab[aria-selected=true] { border-color: var(--line); background: var(--panel); color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.pbody { overflow: auto; min-height: 0; min-width: 0; padding: 10px 12px 14px; display: grid; gap: 10px; align-content: start; }
+
+/* model tree */
+.tree { overflow: auto; min-height: 0; padding: 4px 0; }
+.empty { padding: 18px 14px; color: var(--muted); display: grid; gap: 10px; }
+.grp { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 6px; cursor: pointer; font-weight: 600; user-select: none; }
+.grp:hover { background: var(--panel2); }
+.grp .tw { width: 18px; height: 18px; display: grid; place-items: center; color: var(--muted); transition: transform .15s; }
+.grp.closed .tw { transform: rotate(-90deg); }
+.grp .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp.on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.row { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 26px; cursor: pointer; border-left: 3px solid transparent; user-select: none; }
+.row:hover { background: var(--panel2); }
+.row.on { background: color-mix(in srgb, var(--accent) 16%, transparent); border-left-color: var(--accent); }
+.row.off .nm { color: var(--muted); text-decoration: line-through; }
+.row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .kind { font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); }
+.sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--fg) 30%, transparent); flex: none; }
+.sw.multi { background-image: conic-gradient(#e44 0 25%, #3c6 0 50%, #39f 0 75%, #fc3 0); }
+.eye { width: 22px; height: 22px; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0; border-radius: 4px; flex: none; }
+.eye svg { width: 15px; height: 15px; }
+.eye:hover { color: var(--fg); background: var(--panel); }
+.ren { font: inherit; width: 100%; padding: 1px 4px; border: 1px solid var(--accent); border-radius: 3px; background: var(--bg); color: var(--fg); }
+
+/* properties card */
+.props { border-top: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 6px; max-height: 42vh; overflow: auto; }
+.props:empty { display: none; }
+.eyebrow { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; }
+.ptitle { font-family: var(--f-mono); font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--f-mono); font-size: 12px; overflow-wrap: anywhere; }
+.note { font-size: 12px; color: var(--muted); }
+.note.warn { color: #e0a020; }
+
+/* forms */
+fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 10px; margin: 0; display: grid; gap: 8px; min-width: 0; }
+legend { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; padding: 0 4px; }
+.frow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; }
+.frow > span { min-width: 0; }
+.frow output { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.frow input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.frow.chk { grid-template-columns: auto minmax(0, 1fr); cursor: pointer; }
+.frow.chk input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.num, .txt, select.sel { font: inherit; font-family: var(--f-mono); font-size: 12px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--fg); min-width: 0; box-sizing: border-box; }
+.num { width: 84px; text-align: right; }
+.num:focus, .txt:focus, select.sel:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+select.sel { font-family: var(--f-body); font-size: 13px; cursor: pointer; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.grid3 label, .grid2 label { display: grid; gap: 3px; font-size: 11px; color: var(--muted); min-width: 0; }
+.grid3 .num, .grid2 .num { width: 100%; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.btnrow .btn { flex: 1 1 auto; justify-content: center; }
+
+/* appearance */
+.cur { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: center; }
+.bigsw { width: 64px; height: 64px; border-radius: 12px; border: 1px solid var(--line); position: relative; overflow: hidden; cursor: pointer; }
+.bigsw input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.bigsw::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / var(--shine, .35)), transparent 55%); pointer-events: none; }
+.hexin { width: 100%; text-transform: uppercase; }
+.palette > .note { grid-column: 1 / -1; }
+.palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 6px; }
+.chipc { aspect-ratio: 1; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent); cursor: pointer; position: relative; padding: 0; }
+.chipc::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / var(--shine, .3)), transparent 60%); }
+.chipc:hover, .chipc:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lib { display: grid; gap: 4px; }
+.libi { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; background: none; color: var(--fg); text-align: left; }
+.libi:hover { background: var(--panel2); border-color: var(--line); }
+.libi .sw { width: 22px; height: 22px; border-radius: 6px; }
+.modehint { font-size: 12px; color: var(--muted); border-left: 3px solid var(--accent); padding: 6px 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 0 6px 6px 0; }
+
+/* create */
+.prims { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.prim { display: grid; justify-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); color: var(--fg); cursor: pointer; font-size: 11px; }
+.prim svg { width: 26px; height: 26px; color: var(--accent); }
+.prim[aria-pressed=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.prim:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+
+/* viewport */
+.stage { position: relative; min-width: 0; min-height: 0; background: linear-gradient(var(--view-a), var(--view-b)); touch-action: none; overflow: hidden; }
+.stage canvas { display: block; width: 100%; height: 100%; outline: none; }
+.stage.pick canvas { cursor: crosshair; }
+.stage.paint canvas { cursor: copy; }
+.vtools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.vtools .tools { background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(4px); }
+.hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; pointer-events: none; white-space: nowrap; max-width: calc(100% - 40px); overflow: hidden; text-overflow: ellipsis; }
+.hint b { color: var(--accent); }
+.mlabel { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--accent); border-radius: 5px; padding: 3px 7px; font-family: var(--f-mono); font-size: 12px; transform: translate(-50%, -130%); white-space: nowrap; }
+.welcome { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.welcome .card { pointer-events: auto; display: grid; gap: 14px; justify-items: center; text-align: center; padding: 30px 34px; border: 2px dashed color-mix(in srgb, var(--fg) 25%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--panel) 80%, transparent); max-width: min(560px, calc(100% - 40px)); }
+.welcome .logo { width: 72px; height: 72px; }
+.welcome b { font-family: var(--f-display); font-size: 22px; }
+.welcome .fmts { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.status { height: 26px; box-sizing: border-box; overflow: hidden; white-space: nowrap; display: flex; align-items: center; gap: 18px; padding: 4px 14px; border-top: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 12px; }
+.status b { color: var(--fg); font-weight: 500; font-family: var(--f-mono); }
+.status .k { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #e0a020; display: inline-block; }
+.dot.ok { background: var(--accent); }
+.dot.bad { background: var(--danger); }
+.status .right { margin-left: auto; }
+
+/* menus, dialogs, toasts */
+.ctxmenu { position: fixed; z-index: 45; min-width: 230px; padding: 6px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); box-shadow: 0 14px 40px rgb(0 0 0 / .45); display: grid; gap: 2px; }
+.ctxmenu .ttl { font-size: 11px; color: var(--muted); padding: 6px 10px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+.ctxmenu button { text-align: left; padding: 8px 12px; border: 0; border-radius: 8px; background: none; color: var(--fg); cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.ctxmenu button svg { width: 16px; height: 16px; flex: none; opacity: .85; }
+.ctxmenu button kbd { margin-left: auto; }
+.ctxmenu button:hover, .ctxmenu button:focus-visible { background: var(--panel); outline: none; }
+.ctxmenu button.bad { color: var(--danger); }
+.ctxmenu button:disabled { opacity: .4; cursor: default; }
+.ctxmenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: var(--muted); }
+.modal { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / .55); display: grid; place-items: center; padding: 16px; }
+.dlg { width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 20px 60px rgb(0 0 0 / .5); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.dlg .dh { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.dlg .dh b { font-family: var(--f-display); font-size: 18px; flex: 1; }
+.dlg .db { padding: 14px 16px; display: grid; gap: 12px; overflow: auto; }
+.dlg .df { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid var(--line); }
+.fmtgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.fmt { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); cursor: pointer; text-align: left; color: var(--fg); }
+.fmt b { font-family: var(--f-mono); font-size: 14px; }
+.fmt small { color: var(--muted); font-size: 11.5px; line-height: 1.3; }
+.fmt[aria-pressed=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.fmt .tag { color: var(--accent); font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.toasts { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); display: grid; gap: 8px; z-index: 60; pointer-events: none; justify-items: center; }
+.toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 9px 14px; box-shadow: 0 10px 30px rgb(0 0 0 / .4); max-width: min(560px, calc(100vw - 40px)); pointer-events: auto; }
+.toast.err { border-left-color: var(--danger); }
+.toast.warn { border-left-color: #e0a020; }
+.busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .25); z-index: 5; }
+.busy .bx { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; }
+.spin { width: 18px; height: 18px; border: 2.5px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.dropmask { position: fixed; inset: 0; background: rgb(0 0 0 / .74); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 70; pointer-events: none; }
+.dropmask .dm { display: grid; gap: 14px; justify-items: center; text-align: center; width: min(540px, calc(100% - 32px)); box-sizing: border-box; padding: 34px 28px; border: 2px dashed #ffffff; border-radius: 16px; background: rgb(20 22 21 / .92); color: #fff; }
+.dropmask .logo { width: 64px; height: 64px; }
+.dropmask b { font-family: var(--f-display); font-size: 22px; }
+.links { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.lk { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); color: var(--fg); text-decoration: none; min-width: 0; }
+.lk:hover { border-color: var(--accent); }
+.lk svg { width: 24px; height: 24px; flex: none; }
+.lk span { display: grid; min-width: 0; line-height: 1.25; }
+.lk small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlg ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.keys { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; align-items: center; color: var(--muted); }
+.keys kbd { justify-self: start; color: var(--fg); }
+</style>
+<div class="app" id="app">
+  <header class="top">
+    <span class="brand"><i class="logo"></i>3DViewer</span>
+    <button class="btn primary" id="bOpen" data-ic="folder"><span data-t="open">Открыть</span></button>
+    <button class="btn ico" id="bNew" data-ic="filePlus" data-tt="newScene"></button>
+    <button class="btn ico" id="bSave" data-ic="save" data-tt="saveProject"></button>
+    <button class="btn" id="bExport" data-ic="download"><span data-t="export">Экспорт</span></button>
+    <span class="vsep"></span>
+    <button class="btn ico" id="bUndo" data-ic="undo" data-tt="undo"></button>
+    <button class="btn ico" id="bRedo" data-ic="redo" data-tt="redo"></button>
+    <span class="vsep"></span>
+    <span class="tools" id="toolBar">
+      <button class="tbtn" data-tool="select" data-ic="cursor" data-tt="toolSelect"></button>
+      <button class="tbtn" data-tool="pick" data-ic="pipette" data-tt="toolPick"></button>
+      <button class="tbtn" data-tool="paint" data-ic="brush" data-tt="toolPaint"></button>
+      <button class="tbtn" data-tool="move" data-ic="move" data-tt="toolMove"></button>
+      <button class="tbtn" data-tool="rotate" data-ic="rotate" data-tt="toolRotate"></button>
+      <button class="tbtn" data-tool="measure" data-ic="ruler" data-tt="toolMeasure"></button>
+    </span>
+    <span class="seg" id="filterSeg" data-tt="filterTip">
+      <button data-f="body" data-t="fBody">Тело</button>
+      <button data-f="face" data-t="fFace">Грань</button>
+    </span>
+    <span class="fileName" id="fileName"></span>
+    <span class="spacer"></span>
+    <button class="btn ico" id="bRight" data-ic="panel" data-tt="togglePanel"></button>
+    <button class="btn ico" id="bTheme" data-ic="sun" data-tt="theme"></button>
+    <button class="btn ico" id="bSettings" data-ic="gear" data-tt="settings"></button>
+  </header>
+  <div class="main" id="main">
+    <aside class="side">
+      <div class="phead"><b data-t="tree">Дерево модели</b><span class="cnt" id="treeCnt"></span></div>
+      <div class="tree" id="tree"></div>
+      <div class="props" id="props"></div>
+    </aside>
+    <div class="split" id="splitL" role="separator" aria-orientation="vertical"></div>
+    <section class="stage" id="stage">
+      <div class="welcome" id="welcome">
+        <div class="card">
+          <i class="logo"></i>
+          <b data-t="welcomeTitle">Откройте или перетащите 3D-модель</b>
+          <span class="note" data-t="welcomeText">Можно сразу несколько файлов — все попадут в одну сцену. Или создайте тело на вкладке «Создать».</span>
+          <div class="btnrow"><button class="btn primary" id="wOpen" data-ic="folder"><span data-t="openFiles">Открыть файлы</span></button><button class="btn" id="wCreate" data-ic="box"><span data-t="createBody">Создать тело</span></button></div>
+          <div class="fmts">STEP · STP · IGES · IGS · BREP · STL · OBJ · GLB · GLTF · FBX · DAE · 3DS · PLY · 3MF · AMF · WRL · VRML · OFF · VTK · USDZ · LWO · KMZ · PCD · XYZ · 3DV</div>
+        </div>
+      </div>
+      <div class="vtools">
+        <span class="tools">
+          <button class="tbtn" id="vFit" data-ic="fit" data-tt="fit"></button>
+          <button class="tbtn" id="vViews" data-ic="cube" data-tt="views"></button>
+          <button class="tbtn" id="vMode" data-ic="layers" data-tt="displayMode"></button>
+          <button class="tbtn" id="vProj" data-ic="persp" data-tt="projection"></button>
+          <button class="tbtn" id="vGrid" data-ic="grid" data-tt="gridTip"></button>
+        </span>
+      </div>
+      <div class="hint" id="hint" hidden></div>
+      <div class="busy" id="busy" hidden><div class="bx"><i class="spin"></i><span id="busyText"></span></div></div>
+    </section>
+    <div class="split" id="splitR" role="separator" aria-orientation="vertical"></div>
+    <aside class="rpanel" id="rpanel">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="look" data-t="tabLook">Оформление</button>
+        <button class="tab" role="tab" data-tab="create" data-t="tabCreate">Создать</button>
+        <button class="tab" role="tab" data-tab="ops" data-t="tabOps">Операции</button>
+        <button class="tab" role="tab" data-tab="set" hidden data-t="settings">Настройки</button>
+      </div>
+      <div class="pbody" id="paneLook"></div>
+      <div class="pbody" id="paneCreate" hidden></div>
+      <div class="pbody" id="paneOps" hidden></div>
+      <div class="pbody" id="paneSet" hidden></div>
+    </aside>
+  </div>
+  <footer class="status" id="status">
+    <span class="k"><i class="dot" id="kDot"></i><span id="kText"></span></span>
+    <span class="k" id="sCount"></span>
+    <span class="k" id="sSel"></span>
+    <span class="k right" id="sCoord"></span>
+    <span class="k">mm</span>
+  </footer>
+</div>
+<div class="toasts" id="toasts"></div>
+<div class="dropmask" id="dropmask" hidden><div class="dm"><i class="logo"></i><b data-t="dropTitle">Отпустите, чтобы открыть</b><span data-t="dropText">Модели добавятся в текущую сцену</span></div></div>
+<input type="file" id="fileIn" multiple hidden>
+<script>
+/*APP*/
+</script>

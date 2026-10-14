@@ -1,0 +1,35 @@
+{
+  "name": "3dviewer",
+  "productName": "3DViewer",
+  "version": "2100.2.0",
+  "description": "3DViewer — просмотр, раскраска и простое моделирование 3D с экспортом в STEP",
+  "author": "carnison",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.carnison.3dviewer",
+    "productName": "3DViewer",
+    "files": ["main.js", "preload.js", "www/**/*"],
+    "directories": { "buildResources": "build", "output": "dist" },
+    "publish": [{ "provider": "generic", "url": "https://github.com/Carn1son/3DViewer/releases/latest/download" }],
+    "fileAssociations": [
+      { "ext": ["step", "stp"], "name": "STEP model", "role": "Viewer" },
+      { "ext": ["iges", "igs"], "name": "IGES model", "role": "Viewer" },
+      { "ext": ["stl", "obj", "3mf", "glb", "gltf", "ply", "fbx", "brep"], "name": "3D model", "role": "Viewer" },
+      { "ext": "3dv", "name": "3DViewer project", "role": "Editor" }
+    ],
+    "win": { "target": ["nsis", "portable"], "icon": "build/icon.ico" },
+    "nsis": { "artifactName": "3DViewer-Setup.exe", "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true },
+    "portable": { "artifactName": "3DViewer-portable.exe" }
+  }
+}

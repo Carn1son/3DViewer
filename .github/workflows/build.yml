@@ -1,0 +1,100 @@
+name: Build 3DViewer
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    name: Build number
+    runs-on: ubuntu-latest
+    outputs:
+      ver: ${{ steps.v.outputs.ver }}
+      label: ${{ steps.v.outputs.label }}
+      day: ${{ steps.v.outputs.day }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          # src/VERSION holds major.minor; people see V1.0, V1.01 … V1.10; the app compares 2100.<major+1>.<minor>
+          IFS=. read -r MA MI < src/VERSION
+          MI=$((10#$MI))
+          echo "ver=2100.$((MA + 1)).$MI" >> "$GITHUB_OUTPUT"
+          if [ "$MI" -eq 0 ]; then echo "label=V$MA.0" >> "$GITHUB_OUTPUT"; else echo "label=V$MA.$(printf %02d $MI)" >> "$GITHUB_OUTPUT"; fi
+          echo "day=$(TZ=Europe/Moscow date +%d.%m.%Y)" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows EXE
+    needs: meta
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build the web app
+        shell: bash
+        run: |
+          pip install pillow
+          python src/build.py
+          echo "window.TDV_BUILD = { version: '${{ needs.meta.outputs.ver }}', label: '${{ needs.meta.outputs.label }}', day: '${{ needs.meta.outputs.day }}', app: 'windows' };" > www/build-info.js
+          rm -rf electron/www
+          cp -r www electron/www
+          mkdir -p electron/build
+          cp www/icon.ico electron/build/icon.ico
+      - name: Install
+        working-directory: electron
+        shell: bash
+        run: |
+          npm install --save-dev electron@31.7.7 electron-builder@25.1.8
+          npm install --save electron-updater@^6.3.9
+          npm pkg set version=${{ needs.meta.outputs.ver }}
+      - name: Build
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win nsis portable --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3DViewer-windows
+          path: |
+            electron/dist/*.exe
+            electron/dist/*.blockmap
+            electron/dist/latest.yml
+
+  release:
+    name: Release (download links, updates)
+    needs: [meta, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.meta.outputs.ver }}
+          LABEL: ${{ needs.meta.outputs.label }}
+          DAY: ${{ needs.meta.outputs.day }}
+        run: |
+          set -e
+          BASE="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
+          printf '%s\n' "3DViewer $LABEL от $DAY." "" "Всегда последняя версия:" "- Windows, установщик: $BASE/3DViewer-Setup.exe" "- Windows, без установки: $BASE/3DViewer-portable.exe" > notes.md
+          gh release create "v$VER" dl/3DViewer-windows/* --repo "$GITHUB_REPOSITORY" --title "3DViewer $LABEL — $DAY" --notes-file notes.md --latest
+      - name: Keep only the newest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.meta.outputs.ver }}
+        run: |
+          for t in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" -q '.[].tag_name'); do
+            [ "$t" = "v$VER" ] || gh release delete "$t" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          done

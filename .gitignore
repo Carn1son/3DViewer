@@ -1,0 +1,7 @@
+www/
+electron/www/
+electron/node_modules/
+electron/dist/
+electron/build/
+src/__pycache__/
+*.log
