@@ -694,6 +694,79 @@ async function commitTransform(m) {
   attachGizmo();
 }
 
+// ---------------- Ctrl + left drag: move the body over the field (XY), Ctrl + Shift + drag: up and down (Z) ----------------
+const drag = { on: false, pending: null, ids: [], plane: null, start: null, delta: new THREE.Vector3(), label: null };
+function dragPoint(cx, cy, plane) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, cam);
+  return ray.ray.intersectPlane(plane, new THREE.Vector3());
+}
+stage.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.target !== renderer.domElement) return;
+  if (SK.on || tool === 'measure' || tool === 'pick' || tool === 'paint' || gizmo.dragging) return;
+  const p = pickAt(e.clientX, e.clientY);
+  if (!p) return;
+  // ours, not the camera's: OrbitControls never sees this press
+  e.stopPropagation(); e.preventDefault();
+  hideMenu();
+  drag.pending = { x: e.clientX, y: e.clientY, p, z: e.shiftKey, id: e.pointerId };
+  renderer.domElement.setPointerCapture(e.pointerId);
+}, true);
+window.addEventListener('pointermove', (e) => {
+  const pd = drag.pending;
+  if (!pd) return;
+  if (!drag.on) {
+    if (Math.hypot(e.clientX - pd.x, e.clientY - pd.y) < 5) return;
+    // start: move the whole selection if the grabbed body is in it, otherwise just that body
+    const inSel = sel.some((s) => s.b === pd.p.b);
+    if (!inSel) setSel([{ b: pd.p.b, f: null }]);
+    drag.ids = uniqBodies(sel).map((s) => s.b).filter((id) => { const b = bodyById(id); return b && b.visible; });
+    const n = pd.z ? new THREE.Vector3().subVectors(cam.position, pd.p.point).setZ(0) : new THREE.Vector3(0, 0, 1);
+    if (n.lengthSq() < 1e-9) n.set(0, -1, 0);
+    drag.plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n.normalize(), pd.p.point);
+    drag.start = pd.p.point.clone();
+    drag.on = true;
+    stage.classList.add('dragging');
+    if (!drag.label) { drag.label = document.createElement('div'); drag.label.className = 'mlabel'; stage.appendChild(drag.label); }
+  }
+  const q = dragPoint(e.clientX, e.clientY, drag.plane);
+  if (!q) return;
+  const d = q.sub(drag.start);
+  if (pd.z) d.set(0, 0, d.z);
+  const st = S.snapMove || 0;
+  if (st > 0) d.set(Math.round(d.x / st) * st, Math.round(d.y / st) * st, Math.round(d.z / st) * st);
+  drag.delta.copy(d);
+  const m = new THREE.Matrix4().makeTranslation(d.x, d.y, d.z);
+  drag.ids.forEach((id) => { const o = objs.get(id); if (o) { o.grp.matrixAutoUpdate = false; o.grp.matrix.copy(m); o.grp.matrixWorldNeedsUpdate = true; } });
+  const r = stage.getBoundingClientRect();
+  drag.label.hidden = false;
+  drag.label.style.left = (e.clientX - r.left) + 'px'; drag.label.style.top = (e.clientY - r.top) + 'px';
+  drag.label.textContent = pd.z ? 'ΔZ ' + fmt(d.z, 3) : 'ΔX ' + fmt(d.x, 3) + '  ΔY ' + fmt(d.y, 3);
+  req();
+});
+window.addEventListener('pointerup', async (e) => {
+  const pd = drag.pending;
+  if (!pd) return;
+  drag.pending = null;
+  try { renderer.domElement.releasePointerCapture(pd.id); } catch (er) { /* released */ }
+  if (!drag.on) { // a Ctrl+click without moving: add to / remove from the selection, as before
+    toggleSel({ b: pd.p.b, f: S.filter === 'face' ? pd.p.f : null }, true);
+    return;
+  }
+  drag.on = false;
+  stage.classList.remove('dragging');
+  if (drag.label) drag.label.hidden = true;
+  const d = drag.delta.clone();
+  const bs = drag.ids.map(bodyById).filter(Boolean);
+  if (d.lengthSq() < 1e-12 || !bs.length) { resetObjMatrices(); req(); return; }
+  const moved = await withBusy(t('working'), () => transformBodies(bs, new THREE.Matrix4().makeTranslation(d.x, d.y, d.z)));
+  resetObjMatrices();
+  if (!moved) { req(); return; }
+  const map = new Map(moved.map((b) => [b.id, b]));
+  commit(Object.assign({}, state, { bodies: state.bodies.map((b) => map.get(b.id) || b) }));
+});
+
 // ---------------- pointer handling ----------------
 let down = null;
 renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, btn: e.button, t: Date.now() }; hideMenu(); });

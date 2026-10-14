@@ -153,6 +153,7 @@ select.sel { font-family: var(--f-body); font-size: 13px; cursor: pointer; }
 .stage canvas { display: block; width: 100%; height: 100%; outline: none; }
 .stage.pick canvas { cursor: crosshair; }
 .stage.paint canvas { cursor: copy; }
+.stage.dragging canvas { cursor: grabbing; }
 .vtools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .vtools .tools { background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(4px); }
 .hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; pointer-events: none; white-space: nowrap; max-width: calc(100% - 40px); overflow: hidden; text-overflow: ellipsis; }
