@@ -429,7 +429,7 @@ function applyDim(nums) {
 
 function sketchKey(e) {
   if (SK.dimBox && document.activeElement === SK.dimBox) return true;
-  const k = e.key.toLowerCase();
+  const k = keyOf(e);
   if (/^[0-9.,-]$/.test(e.key) && SK.cur && !e.ctrlKey) { e.preventDefault(); openDimBox(e.key === ',' ? '.' : e.key); return true; }
   if (k === 'escape') { if (SK.cur) { if (SK.cur.t === 'path') skFinishPath(); else { SK.cur = null; skRubber(null); skLabel(null); } } else if (SK.sel) { SK.sel = null; skDraw(); renderSketchPane(); } else setSkTool('select'); return true; }
   if (k === 'enter') { skFinishPath(); return true; }
