@@ -32,7 +32,12 @@ def worker_src():
     ])
 
 
+WIN = 'win' in sys.argv[1:]  # Windows app: the page is served by WebView2, so the kernel wasm ships as plain files (a third smaller)
+
+
 def kernel_js():
+    if WIN:
+        return 'window.TDV_KERNEL = {src: ' + json.dumps(worker_src()) + ',\nocUrl: "replicad_single.wasm",\noiUrl: "occt-import-js.wasm"};\n'
     b = lambda f: base64.b64encode(open(os.path.join(V, f), 'rb').read()).decode()
     return ('window.TDV_KERNEL = {src: ' + json.dumps(worker_src()) + ',\noc: "' + b('replicad_single.wasm') + '",\noi: "' + b('occt-import-js.wasm') + '"};\n')
 
@@ -64,6 +69,10 @@ if __name__ == '__main__':
     open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8').write(index_html())
     shutil.copy(os.path.join(V, 'three-bundle.js'), os.path.join(OUT, 'three.js'))
     open(os.path.join(OUT, 'kernel.js'), 'w', encoding='utf-8').write(kernel_js())
+    for f in ('replicad_single.wasm', 'occt-import-js.wasm'):
+        p = os.path.join(OUT, f)
+        if WIN: shutil.copy(os.path.join(V, f), p)
+        elif os.path.exists(p): os.remove(p)
     bi = os.path.join(OUT, 'build-info.js')
     if not os.path.exists(bi): open(bi, 'w').write("window.TDV_BUILD = { label: '%s', day: '%s', app: 'web' };\n" % (VLABEL, VDATE))
     icons(OUT)

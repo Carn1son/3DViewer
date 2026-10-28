@@ -15,3 +15,5 @@
 - `VERSION` — номер версии (1.0 → V1.0, 1.1 → V1.01 …)
 
 Пересборка three.js: `npm i three@0.170.0 esbuild && npx esbuild src/three-entry.js --bundle --minify --format=iife --outfile=src/vendor/three-bundle.js`
+
+- `win/` — Windows-версия: C# + WebView2 (окно, мост `tdvDesktop`, обновления, «Сохранить как», перенос настроек из Electron), установщик NSIS. Веб-часть для неё: `python3 src/build.py win` (ядро отдельными .wasm-файлами).

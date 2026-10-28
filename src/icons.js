@@ -1,6 +1,8 @@
 /* Stroke icons, 24x24 (Lucide-style paths, ISC licence). */
 var IC = (function () {
   var P = {
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    minus: '<path d="M5 12h14"/>',
     sketch: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M3 9V5a2 2 0 0 1 2-2h4"/>',
     pull: '<path d="M3 15h18v6H3z"/><path d="M12 12V3M8 7l4-4 4 4"/>',
     cpattern: '<circle cx="12" cy="4.5" r="2"/><circle cx="19.5" cy="12" r="2"/><circle cx="12" cy="19.5" r="2"/><circle cx="4.5" cy="12" r="2"/><path d="M8 6.5a8 8 0 0 1 8 0M17.5 8a8 8 0 0 1 0 8M16 17.5a8 8 0 0 1-8 0M6.5 16a8 8 0 0 1 0-8" stroke-dasharray="1.5 2"/>',
