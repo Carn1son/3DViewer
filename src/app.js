@@ -12,7 +12,7 @@ THREE.Object3D.DEFAULT_UP.set(0, 0, 1); // CAD convention: Z is up
 const DEF = {
   lang: 'ru', theme: 'dark', bg: 'grad', edges: true, grid: true, axes: true, quality: 'mid', persp: true, mode: 'shadedEdges',
   snapMove: 0, snapRot: 15, newColor: '#b8c0c6', recent: [], schema: 4, structure: 'part', clearFaces: true, autoPaint: true,
-  lw: 300, rw: 330, right: true, tab: 'look', filter: 'body',
+  lw: 300, rw: 330, right: true, tab: 'look', filter: 'body', autoAlign: true,
 };
 let S = Object.assign({}, DEF);
 try { Object.assign(S, JSON.parse(localStorage.getItem('tdv.settings') || '{}')); } catch (e) { /* no storage */ }
@@ -651,9 +651,10 @@ function setTool(tl) {
   tool = tl;
   document.querySelectorAll('#toolBar [data-tool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === tl)));
   document.querySelectorAll('[data-ltool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ltool === tl)));
-  stage.classList.toggle('pick', tl === 'pick' || tl === 'measure');
+  stage.classList.toggle('pick', tl === 'pick' || tl === 'measure' || tl === 'mate');
   stage.classList.toggle('paint', tl === 'paint');
   if (tl !== 'measure') clearMeasure(); else renderProps();
+  if (tl !== 'mate') MATE.src = null;
   if ((tl === 'pick' || tl === 'paint') && S.right && S.tab !== 'look') showTab('look');
   if ((tl === 'pick' || tl === 'paint') && !S.right) { S.right = true; layout(); showTab('look'); }
   attachGizmo();
@@ -662,7 +663,7 @@ function setTool(tl) {
 function showHint() {
   const h = $('hint');
   if (SK.on) { h.innerHTML = t('skHint_' + SK.tool); h.hidden = false; return; }
-  const map = { pick: 'hintPick', paint: S.filter === 'face' ? 'hintPaintFace' : 'hintPaintBody', move: 'hintMove', rotate: 'hintRotate', measure: 'hintMeasure' };
+  const map = { pick: 'hintPick', paint: S.filter === 'face' ? 'hintPaintFace' : 'hintPaintBody', move: 'hintMove', rotate: 'hintRotate', measure: 'hintMeasure', mate: MATE.src ? 'hintMate2' : 'hintMate1' };
   if (map[tool]) { h.innerHTML = t(map[tool]); h.hidden = false; } else h.hidden = true;
 }
 function setFilter(f) {
@@ -884,6 +885,7 @@ renderer.domElement.addEventListener('pointerleave', () => { if (hover) { hover 
 function clickAt(e) {
   if (SK.on) { sketchClick(e); return; }
   if (tool === 'measure') { measureClick(e); return; }
+  if (tool === 'mate') { mateClick(e); return; }
   const p = pickAt(e.clientX, e.clientY);
   const add = e.ctrlKey || e.metaKey || e.shiftKey;
   if (tool === 'pick' || (tool === 'paint' && e.altKey)) {
@@ -933,7 +935,7 @@ function openBodyMenu(x, y, p) {
   h += mi('pickLook', 'pipette', t('takeAsCurrent'), '') + mi('applyCur', 'brush', t('applyCurrent'), '');
   h += mi('replace', 'replace', t('replaceEverywhere'), '');
   const fsel = sel.find((x) => x.f != null);
-  if (fsel) h += '<hr>' + mi('growF', 'plus', t('growMore'), '+') + mi('shrinkF', 'minus', t('growLess'), '−') + mi('growAll', 'target', t('growAll'), '') + '<hr>' + mi('skFace', 'sketch', t('skOnFace'), 'K') + mi('pullF', 'pull', t('opPull') + '…', '');
+  if (fsel) h += '<hr>' + mi('layF', 'layface', t('mateThis'), 'L') + mi('growF', 'plus', t('growMore'), '+') + mi('shrinkF', 'minus', t('growLess'), '−') + mi('growAll', 'target', t('growAll'), '') + '<hr>' + mi('skFace', 'sketch', t('skOnFace'), 'K') + mi('pullF', 'pull', t('opPull') + '…', '');
   if (bs.some((b) => Object.keys(b.faceColors || {}).length)) h += mi('resetFaces', 'reset', t('resetFaces'), '');
   h += '<hr>' + mi('rename', 'edit', t('rename'), 'F2', { dis: !one }) + mi('dup', 'dup', t('duplicate'), 'Ctrl+D') + mi('isolate', 'isolate', t('isolate'), '') + mi('hide', 'eyeOff', t('hide'), 'H') + mi('zoom', 'fit', t('zoomTo'), '');
   h += '<hr>' + mi('del', 'trash', t('delete'), 'Del', { bad: true });
@@ -943,7 +945,7 @@ function openBodyMenu(x, y, p) {
     applyCur: () => paint(sel, cur, sel.some((s) => s.f != null) ? 'face' : 'body'),
     replace: () => replaceColour(lookOf(bs[0], sel[0].f).color, cur),
     resetFaces: () => commit(withBodies(bs.map((b) => b.id), (b) => { b.faceColors = {}; return b; })),
-    skFace: () => startSketch('face'), pullF: () => focusOp('pull'), growF: () => growSelection(1), shrinkF: () => growSelection(-1), growAll: selectConnectedAll,
+    skFace: () => startSketch('face'), pullF: () => focusOp('pull'), growF: () => growSelection(1), layF: () => { const b = bodyById(fsel.b), n = faceNormal(b, fsel.f); if (!n) { toast(t('mateNotFlat'), 'warn'); return; } const toCam = new THREE.Vector3().subVectors(cam.position, facePoint(b, fsel.f)); if (n.dot(toCam) < 0) n.negate(); setTool('mate'); MATE.src = { b: fsel.b, f: fsel.f, n, point: facePoint(b, fsel.f) }; setSel([fsel]); showHint(); mateMenu(x + 10, y + 10); }, shrinkF: () => growSelection(-1), growAll: selectConnectedAll,
     rename: () => startRename(one.id), dup: duplicate, isolate, hide: hideSel, zoom: () => fitView(null, true), del: deleteSel,
   });
 }
@@ -1300,6 +1302,9 @@ function renderOps() {
     '<div class="grid2"><label>' + esc(t('axis')) + '<select class="sel" data-ov="ax"><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select></label>' + num('ang', t('angleDeg')) + '</div>' +
     '<div class="btnrow">' + btn('rot', 'rotate', t('doRotate'), n) + '</div>' + chk('copy', t('asCopy')) +
     '<div class="btnrow"><button class="btn sm" data-op="floor"' + (n ? '' : ' disabled') + '>' + esc(t('toFloor')) + '</button><button class="btn sm" data-op="center"' + (n ? '' : ' disabled') + '>' + esc(t('toCenter')) + '</button></div>');
+  h += sec('align', t('opAlign'), '<span class="note">' + esc(t('alignNote')) + '</span><div class="btnrow">' +
+    '<button class="btn" data-op="align" data-ic="cube"><span>' + esc(t('doAlign')) + '</span></button><button class="btn" data-op="centre" data-ic="target"><span>' + esc(t('doCentre')) + '</span></button></div>' +
+    '<div class="btnrow"><button class="btn" data-op="mate" data-ic="layface"><span>' + esc(t('doMate')) + '</span></button></div>');
   h += sec('pattern', t('opPattern'), '<div class="grid2">' + num('n', t('count'), 1) + '<span></span></div><div class="grid3">' + num('px', t('stepX')) + num('py', t('stepY')) + num('pz', t('stepZ')) + '</div>' + chk('pfuse', t('fuseResult')) +
     '<div class="btnrow">' + btn('pattern', 'pattern', t('makePattern'), n) + '</div>');
   h += sec('cpattern', t('opCPattern'), '<div class="grid2">' + num('cn', t('count'), 1) + num('cang', t('totalAngle')) +
@@ -1336,6 +1341,8 @@ function replaceBodies(old, neu, extra) {
 }
 async function runOp(op) {
   const bs = selBodies();
+  if (op === 'align' || op === 'centre') { await alignSelected(op === 'centre'); return; }
+  if (op === 'mate') { setTool('mate'); return; }
   if (!bs.length && op !== 'none') { toast(t('selectFirst'), 'warn'); return; }
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const box = sceneBox(true), ctr = box.getCenter(new THREE.Vector3());
@@ -1512,6 +1519,7 @@ function renderSettings() {
     row(t('quality'), '<select class="sel" data-ss="quality">' + opt('low', S.quality, t('qLow')) + opt('mid', S.quality, t('qMid')) + opt('high', S.quality, t('qHigh')) + '</select>') +
     '<span class="note">' + esc(t('qualityNote')) + '</span>' +
     row(t('newColour'), '<input type="color" data-ss="newColor" value="' + esc(S.newColor) + '" style="width:44px;height:26px;padding:0;border:1px solid var(--line);border-radius:4px;background:none">') + '</fieldset>';
+  h += '<fieldset><legend>' + esc(t('setOpen')) + '</legend>' + chk('autoAlign', t('autoAlign')) + '<span class="note">' + esc(t('autoAlignNote')) + '</span></fieldset>';
   h += '<fieldset><legend>' + esc(t('setPaint')) + '</legend>' + chk('autoPaint', t('autoPaint')) + chk('clearFaces', t('clearFaces')) + '</fieldset>';
   h += '<fieldset><legend>' + esc(t('setSnap')) + '</legend>' +
     row(t('snapMove'), '<select class="sel" data-ss="snapMove">' + [0, 0.01, 0.05, 0.1, 0.5, 1, 5, 10].map((v) => opt(v, S.snapMove, v ? v + ' mm' : t('off'))).join('') + '</select>') +
@@ -1522,7 +1530,7 @@ function renderSettings() {
     '<span class="note">' + esc(t('stepNote')) + '</span></fieldset>';
   h += '<fieldset><legend>' + esc(t('hotkeys')) + '</legend><div class="keys">' + [
     ['Ctrl+O', 'open'], ['Ctrl+S', 'saveProject'], ['Ctrl+E', 'export'], ['Ctrl+Z / Ctrl+Y', 'undoRedo'], ['Q', 'toolSelect'], ['I', 'toolPick'], ['B', 'toolPaint'], ['Alt+' + t('click'), 'altPick'], ['Shift+' + t('click'), 'shiftPaint'],
-    ['T / R', 'moveRotate'], ['M', 'toolMeasure'], ['G', 'filterToggle'], ['+ / −', 'growKeys'], ['Ctrl+Shift+C / V', 'copyPaste'], ['F', 'fit'], ['Ctrl+1…7', 'views'], ['H / Shift+H', 'hideShow'], ['Ctrl+D', 'duplicate'], ['F2', 'rename'], ['Del', 'delete'], [t('dblclick'), 'pivotKey'],
+    ['T / R', 'moveRotate'], ['M', 'toolMeasure'], ['L', 'toolMate'], ['G', 'filterToggle'], ['+ / −', 'growKeys'], ['Ctrl+Shift+C / V', 'copyPaste'], ['F', 'fit'], ['Ctrl+1…7', 'views'], ['H / Shift+H', 'hideShow'], ['Ctrl+D', 'duplicate'], ['F2', 'rename'], ['Del', 'delete'], [t('dblclick'), 'pivotKey'],
   ].map(([k, l]) => '<kbd>' + esc(k) + '</kbd><span>' + esc(t(l)) + '</span>').join('') + '</div><span class="note">' + esc(t('mouseNote')) + '</span></fieldset>';
   const BI = window.TDV_BUILD && window.TDV_BUILD.app !== 'web' ? window.TDV_BUILD : null;
   h += '<fieldset><legend>' + esc(t('about')) + '</legend><div><b>3DViewer ' + esc(BI ? BI.label : VLABEL) + '</b> <span class="note">' + esc(t('fromDate', BI ? BI.day : VDATE)) + '</span></div>' + updatesBlock() +
@@ -1660,7 +1668,7 @@ document.addEventListener('keydown', (e) => {
   if (!e.altKey && (e.code === 'NumpadSubtract' || e.code === 'Minus' || e.key === '-')) { e.preventDefault(); growSelection(-1); return; }
   if (ctrl || e.altKey) return;
   switch (k) {
-    case 'escape': hideMenu(); if (tool === 'measure' && MS.a) clearMeasure(); else if (tool !== 'select') setTool('select'); else setSel([]); break;
+    case 'escape': hideMenu(); if (tool === 'mate' && MATE.src) mateReset(); else if (tool === 'measure' && MS.a) clearMeasure(); else if (tool !== 'select') setTool('select'); else setSel([]); break;
     case 'k': startSketchMenu(); break;
     case 'delete': case 'backspace': deleteSel(); break;
     case 'f': fitView(null, e.shiftKey); break;
@@ -1670,6 +1678,7 @@ document.addEventListener('keydown', (e) => {
     case 't': setTool('move'); break;
     case 'r': setTool('rotate'); break;
     case 'm': setTool('measure'); break;
+    case 'l': setTool(tool === 'mate' ? 'select' : 'mate'); break;
     case 'g': setFilter(S.filter === 'face' ? 'body' : 'face'); break;
     case 'h': if (e.shiftKey) showAll(); else hideSel(); break;
     case 'f2': { const b = selBodies()[0]; if (b) startRename(b.id); break; }
@@ -1706,7 +1715,7 @@ function wire() {
 
 // small hook for automated tests and the console
 window.__tdv = {
-  get state() { return state; }, get sel() { return sel; }, kcall, get SK() { return SK; }, get MS() { return MS; },
+  get state() { return state; }, get sel() { return sel; }, kcall, pick: (x, y) => { const p = pickAt(x, y); return p && { b: p.b, f: p.f }; }, get tool() { return tool; }, get SK() { return SK; }, get MS() { return MS; },
   skScreen(x, y) { const r = renderer.domElement.getBoundingClientRect(); const s = screenOfL([x, y]); return [r.left + s[0], r.top + s[1]]; },
   worldScreen(x, y, z) { const r = renderer.domElement.getBoundingClientRect(); const v = new THREE.Vector3(x, y, z).project(cam); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   screenOf(id) { const o = objs.get(id); if (!o) return null; const c = new THREE.Box3().setFromObject(o.mesh).getCenter(new THREE.Vector3()).project(cam); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (c.x + 1) / 2 * r.width, r.top + (1 - c.y) / 2 * r.height]; },

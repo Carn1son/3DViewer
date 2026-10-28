@@ -573,7 +573,7 @@ function renderCmdBar() {
       c('pattern', 'pattern', t('cmdPattern')) + c('cpattern', 'cpattern', t('cmdCPattern')) + c('mirror', 'mirror', t('opMirror')) + sep +
       c('fuse', 'union', t('fuse')) + c('cut', 'subtract', t('cut')) + c('common', 'intersect', t('common')) + sep +
       c('fillet', 'fillet', t('fillet')) + c('chamfer', 'chamfer', t('chamfer')) + sep +
-      c('t-move', 'move', t('cmdMove'), { on: tool === 'move' }) + c('t-rotate', 'rotate', t('cmdRotate'), { on: tool === 'rotate' }) + c('t-measure', 'ruler', t('cmdMeasure'), { on: tool === 'measure' });
+      c('t-move', 'move', t('cmdMove'), { on: tool === 'move' }) + c('t-rotate', 'rotate', t('cmdRotate'), { on: tool === 'rotate' }) + c('t-measure', 'ruler', t('cmdMeasure'), { on: tool === 'measure' }) + c('t-mate', 'layface', t('cmdMate'), { on: tool === 'mate', tip: t('toolMate') }) + c('t-align', 'cube', t('cmdAlign'), { tip: t('doAlign') });
     void n;
   }
   bar.innerHTML = h;
@@ -593,6 +593,8 @@ function runCmd(id, el) {
     case 't-move': setTool(tool === 'move' ? 'select' : 'move'); renderCmdBar(); return;
     case 't-rotate': setTool(tool === 'rotate' ? 'select' : 'rotate'); renderCmdBar(); return;
     case 't-measure': setTool(tool === 'measure' ? 'select' : 'measure'); renderCmdBar(); return;
+    case 't-mate': setTool(tool === 'mate' ? 'select' : 'mate'); renderCmdBar(); return;
+    case 't-align': alignSelected(false); return;
     case 'sk-select': setSkTool('select'); return;
     case 'sk-line': setSkTool('line'); return;
     case 'sk-arc': toggleArc(); return;

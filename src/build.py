@@ -43,7 +43,7 @@ def kernel_js():
 
 
 def index_html():
-    app = '(function () {\n' + rd('i18n.js') + '\n' + rd('icons.js') + '\n' + rd('app.js') + '\n' + rd('sketch.js') + '\n' + rd('measure.js') + '\n' + rd('updates.js') + '\n' + rd('io.js') + '\n})();'
+    app = '(function () {\n' + rd('i18n.js') + '\n' + rd('icons.js') + '\n' + rd('app.js') + '\n' + rd('sketch.js') + '\n' + rd('measure.js') + '\n' + rd('align.js') + '\n' + rd('updates.js') + '\n' + rd('io.js') + '\n})();'
     frag = rd('app.html').replace('/*APP*/', app).replace('__VLABEL__', VLABEL).replace('__VDATE__', VDATE).replace('__LOGO__', logo_uri(96))
     title, rest = frag.split('\n', 1)
     return ('<!doctype html>\n<html lang="ru">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n'

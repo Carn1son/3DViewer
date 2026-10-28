@@ -83,7 +83,9 @@ async function importOne(file, byName) {
     name: b.name || name, group: g.id, kind: b.kind || 'mesh', sid: b.sid || 0, mesh: normMesh(b.mesh), color: b.color || null,
     faceColors: b.faceColors || {}, alpha: b.alpha == null ? 1 : b.alpha, metal: b.metal == null ? 0.1 : b.metal, rough: b.rough == null ? 0.5 : b.rough, vcol: !!b.vcol,
   }));
+  g.file = true; // a part from one file moves as a whole (alignment, "lay on a face")
   commit(Object.assign({}, state, { groups: state.groups.concat([g]), bodies: state.bodies.concat(list) }));
+  await autoAlign(list);
   return list.length;
 }
 function normMesh(m) {

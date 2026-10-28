@@ -1,6 +1,7 @@
 /* Stroke icons, 24x24 (Lucide-style paths, ISC licence). */
 var IC = (function () {
   var P = {
+    layface: '<path d="M3 20h18"/><path d="M7 16h10l-2-8H9z"/><path d="M12 4v3"/><path d="m10 5 2-2 2 2"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     minus: '<path d="M5 12h14"/>',
     sketch: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="M3 9V5a2 2 0 0 1 2-2h4"/>',
