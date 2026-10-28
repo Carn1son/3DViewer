@@ -298,6 +298,7 @@ function exportDialog() {
     const opts = { what: m.querySelector('#eWhat').value, schema: Number(m.querySelector('#eSchema').value), structure: m.querySelector('#eStruct').value, high: m.querySelector('#eHigh').checked, name: m.querySelector('#eName').value.trim() || 'model' };
     S.schema = opts.schema; S.structure = opts.structure; saveS();
     const ok = await withBusy(t('exporting'), () => doExport(expFmt, opts));
+    if (ok !== null && expFmt !== '3dv') setTimeout(() => offerPalette(false), 400);
     return ok !== null;
   }]], (m) => {
     m.querySelector('#eSchema').value = String(S.schema); m.querySelector('#eStruct').value = S.structure;
@@ -525,7 +526,7 @@ async function saveProject(name, onlyBodies) {
   if (!state.bodies.length) { toast(t('noModel'), 'warn'); return; }
   const bodies = onlyBodies || state.bodies;
   const nm = typeof name === 'string' ? name : (docName || 'project');
-  await withBusy(t('saving'), async () => {
+  const ok = await withBusy(t('saving'), async () => {
     const out = [];
     for (const b of bodies) {
       const o = { name: b.name, group: b.group, kind: b.kind, color: b.color, faceColors: b.faceColors, alpha: b.alpha, metal: b.metal, rough: b.rough, visible: b.visible, vcol: b.vcol };
@@ -542,7 +543,9 @@ async function saveProject(name, onlyBodies) {
     const gz = THREE.fflate.gzipSync(new TextEncoder().encode(json), { level: 6 });
     await saveBlob(new Blob([gz], { type: 'application/octet-stream' }), nm + '.3dv');
     toast(t('saved', nm + '.3dv'));
+    return true;
   });
+  if (ok) setTimeout(() => offerPalette(false), 400);
 }
 async function loadProject(file) {
   const raw = new Uint8Array(await file.arrayBuffer());

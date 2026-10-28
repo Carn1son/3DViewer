@@ -12,7 +12,7 @@ THREE.Object3D.DEFAULT_UP.set(0, 0, 1); // CAD convention: Z is up
 const DEF = {
   lang: 'ru', theme: 'dark', bg: 'grad', edges: true, grid: true, axes: true, quality: 'mid', persp: true, mode: 'shadedEdges',
   snapMove: 0, snapRot: 15, newColor: '#b8c0c6', recent: [], schema: 4, structure: 'part', clearFaces: true, autoPaint: true,
-  lw: 300, rw: 330, right: true, tab: 'look', filter: 'body', autoAlign: true,
+  lw: 300, rw: 330, right: true, tab: 'look', filter: 'body', autoAlign: true, palOffer: true,
 };
 let S = Object.assign({}, DEF);
 try { Object.assign(S, JSON.parse(localStorage.getItem('tdv.settings') || '{}')); } catch (e) { /* no storage */ }
@@ -603,6 +603,7 @@ function pushRecent(l) {
 // apply a look: items [{b, f}]; scope 'face' writes face colours, 'body' the body look, 'group' every body in the component
 function paint(items, look, scope) {
   if (!items.length) return;
+  palNoteUsed(look);
   const byBody = new Map();
   items.forEach((it) => { if (!byBody.has(it.b)) byBody.set(it.b, []); byBody.get(it.b).push(it.f); });
   let ids = Array.from(byBody.keys());
@@ -633,6 +634,7 @@ function pasteLook() {
   toast(t('lookPasted', sel.length));
 }
 function replaceColour(from, look) {
+  palNoteUsed(look);
   const f = from.toLowerCase();
   let n = 0;
   const ids = state.bodies.filter((b) => bodyColor(b).toLowerCase() === f || Object.values(b.faceColors || {}).some((c) => c.toLowerCase() === f)).map((b) => b.id);
@@ -1162,6 +1164,7 @@ function renderLook() {
     '<div class="frow"><span>' + esc(t('opacity')) + '</span><output id="oAlpha"></output><input type="range" id="curAlpha" min="0.05" max="1" step="0.01"></div>' +
     '<div class="btnrow"><button class="btn primary" id="applySel" data-ic="brush"><span>' + esc(t('applyToSel')) + '</span></button><button class="btn" id="applyGrp"><span>' + esc(t('applyToComp')) + '</span></button></div>' +
     '<div class="modehint" id="lookHint"></div></fieldset>';
+  h += '<fieldset><legend>' + esc(t('palMine')) + '</legend><div id="palBox" class="pals"></div></fieldset>';
   h += '<fieldset><legend>' + esc(t('recent')) + '</legend><div class="palette" id="recent"></div></fieldset>';
   h += '<fieldset><legend>' + esc(t('sceneColours')) + '</legend><div class="lib" id="sceneCols"></div></fieldset>';
   LIB.forEach((cat) => {
@@ -1188,7 +1191,7 @@ function renderLook() {
     setCur(libLook(it));
     if (sel.length && tool !== 'paint') toast(t('libHint'));
   }));
-  renderLookTop(); renderRecent(); renderSceneColours();
+  renderLookTop(); renderRecent(); renderSceneColours(); renderPalettes();
   document.querySelectorAll('[data-ltool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ltool === tool)));
 }
 function renderLookTop(live) {
@@ -1520,7 +1523,7 @@ function renderSettings() {
     '<span class="note">' + esc(t('qualityNote')) + '</span>' +
     row(t('newColour'), '<input type="color" data-ss="newColor" value="' + esc(S.newColor) + '" style="width:44px;height:26px;padding:0;border:1px solid var(--line);border-radius:4px;background:none">') + '</fieldset>';
   h += '<fieldset><legend>' + esc(t('setOpen')) + '</legend>' + chk('autoAlign', t('autoAlign')) + '<span class="note">' + esc(t('autoAlignNote')) + '</span></fieldset>';
-  h += '<fieldset><legend>' + esc(t('setPaint')) + '</legend>' + chk('autoPaint', t('autoPaint')) + chk('clearFaces', t('clearFaces')) + '</fieldset>';
+  h += '<fieldset><legend>' + esc(t('setPaint')) + '</legend>' + chk('autoPaint', t('autoPaint')) + chk('palOffer', t('palOfferSet')) + chk('clearFaces', t('clearFaces')) + '</fieldset>';
   h += '<fieldset><legend>' + esc(t('setSnap')) + '</legend>' +
     row(t('snapMove'), '<select class="sel" data-ss="snapMove">' + [0, 0.01, 0.05, 0.1, 0.5, 1, 5, 10].map((v) => opt(v, S.snapMove, v ? v + ' mm' : t('off'))).join('') + '</select>') +
     row(t('snapRot'), '<select class="sel" data-ss="snapRot">' + [0, 1, 5, 15, 45, 90].map((v) => opt(v, S.snapRot, v ? v + '°' : t('off'))).join('') + '</select>') + '</fieldset>';
