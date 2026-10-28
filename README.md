@@ -19,6 +19,6 @@
 
 ## Сборка
 - Веб-версия: `python3 src/build.py` → папка `www/`, открыть `www/index.html` в Chrome/Edge.
-- Windows: каждый push в `main` собирает установщик и portable .exe через GitHub Actions и выкладывает их в Releases.
+- Windows: `src/win` — маленькое окно на WebView2 (браузер, встроенный в Windows 10/11) вокруг той же веб-версии, как у BoardV. Каждый push в `main` собирает установщик и portable .exe через GitHub Actions и выкладывает их в Releases.
 
 Ядро: Open CASCADE Technology (LGPL-2.1) через replicad-opencascadejs и occt-import-js; графика: three.js (MIT). Лицензии — в `src/vendor/`.

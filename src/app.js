@@ -92,7 +92,8 @@ function kernelStart() {
       K.worker.onerror = (e) => { console.error(e); };
       const id = ++K.seq;
       K.pend.set(id, { res: () => { resolve(true); }, rej: reject });
-      K.worker.postMessage({ id, cmd: 'init', ocWasm: L.oc, oiWasm: L.oi });
+      const abs = (u) => (u ? new URL(u, location.href).href : undefined);
+      K.worker.postMessage({ id, cmd: 'init', ocWasm: L.oc, oiWasm: L.oi, ocUrl: abs(L.ocUrl), oiUrl: abs(L.oiUrl) });
       L.oc = L.oi = L.src = null; // the worker has its copy
     };
     if (window.TDV_KERNEL) { go(); return; }
@@ -463,15 +464,82 @@ function addOverlay(o, fi, mat) {
   m.raycast = () => {}; m.renderOrder = 2;
   o.grp.add(m); o.ov.push(m);
 }
+// many selected faces of one body: one overlay with a draw group per face (a thread can be hundreds of faces)
+function addFacesOverlay(o, faces, mat) {
+  const g = viewGeo(o.data), G = o.data.groups || [];
+  faces.slice().sort((a, b) => a - b).forEach((fi) => { const gr = G[fi]; if (gr) g.addGroup(gr[0], gr[1], 0); });
+  const m = new THREE.Mesh(g, [mat]);
+  m.raycast = () => {}; m.renderOrder = 2;
+  o.grp.add(m); o.ov.push(m);
+}
 function updateHighlights() {
   if (!ovMat.sel) ovMaterials();
   objs.forEach((o) => { clearOverlays(o); if (o.edges) o.edges.material = edgeMat; });
-  sel.forEach((s) => { const o = objs.get(s.b); if (o) { addOverlay(o, s.f, ovMat.sel); if (s.f == null && o.edges) o.edges.material = selEdgeMat; } });
+  const byBody = new Map();
+  sel.forEach((s) => { if (!byBody.has(s.b)) byBody.set(s.b, []); byBody.get(s.b).push(s.f); });
+  byBody.forEach((faces, id) => {
+    const o = objs.get(id); if (!o) return;
+    if (faces.some((f) => f == null) || o.rec.kind === 'points') { addOverlay(o, null, ovMat.sel); if (o.edges) o.edges.material = selEdgeMat; }
+    else if (faces.length === 1) addOverlay(o, faces[0], ovMat.sel);
+    else addFacesOverlay(o, faces, ovMat.sel);
+  });
   if (hover && !(sel.some((s) => s.b === hover.b && (s.f === hover.f || s.f == null)))) {
     const o = objs.get(hover.b);
     if (o) addOverlay(o, S.filter === 'face' || tool === 'paint' && S.filter === 'face' ? hover.f : null, ovMat.hov);
   }
   req();
+}
+
+// ---------------- grow / shrink a face selection (like Blender's Select More / Less) ----------------
+// two faces are neighbours when they share an edge: two or more common vertices on the display mesh
+const adjCache = new WeakMap();
+function faceAdjacency(mesh) {
+  let adj = adjCache.get(mesh);
+  if (adj) return adj;
+  const G = mesh.groups || [], P = mesh.position, I = mesh.index;
+  const owners = new Map(); // vertex position -> faces that use it
+  const q = (v) => Math.round(v * 1e4);
+  G.forEach((gr, fi) => {
+    const seen = new Set();
+    for (let t = gr[0]; t < gr[0] + gr[1]; t++) {
+      const a = I[t] * 3, k = q(P[a]) + ',' + q(P[a + 1]) + ',' + q(P[a + 2]);
+      if (seen.has(k)) continue; seen.add(k);
+      let l = owners.get(k); if (!l) { l = []; owners.set(k, l); } l.push(fi);
+    }
+  });
+  const shared = new Map();
+  owners.forEach((l) => {
+    if (l.length < 2 || l.length > 24) return;
+    for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) { const key = l[i] < l[j] ? l[i] * 1e6 + l[j] : l[j] * 1e6 + l[i]; shared.set(key, (shared.get(key) || 0) + 1); }
+  });
+  adj = G.map(() => []);
+  shared.forEach((n, key) => { if (n < 2) return; const a = Math.floor(key / 1e6), b = key % 1e6; adj[a].push(b); adj[b].push(a); });
+  adjCache.set(mesh, adj);
+  return adj;
+}
+function growSelection(dir) {
+  const faces = sel.filter((s) => s.f != null);
+  if (!faces.length) { toast(t(S.filter === 'face' ? 'growNeedFace' : 'growFaceMode'), 'warn'); return; }
+  const byBody = new Map();
+  faces.forEach((s) => { if (!byBody.has(s.b)) byBody.set(s.b, new Set()); byBody.get(s.b).add(s.f); });
+  const out = sel.filter((s) => s.f == null);
+  let added = 0;
+  byBody.forEach((set, id) => {
+    const b = bodyById(id); if (!b) return;
+    const adj = faceAdjacency(b.mesh);
+    let next;
+    if (dir > 0) { next = new Set(set); set.forEach((f) => (adj[f] || []).forEach((n) => next.add(n))); }
+    else { next = new Set(); set.forEach((f) => { if ((adj[f] || []).every((n) => set.has(n))) next.add(f); }); if (!next.size) next = set; } // keep at least the last ring
+    added += next.size - set.size;
+    next.forEach((f) => out.push({ b: id, f }));
+  });
+  setSel(out);
+  const n = sel.filter((s) => s.f != null).length;
+  if (dir > 0 && !added) toast(t('growDone', n)); else $('sSel').innerHTML = t('statSel', '<b>' + n + '</b>');
+}
+function selectConnectedAll() { // like Blender L: grow until nothing changes
+  let guard = 0, before;
+  do { before = sel.length; growSelection(1); } while (sel.length > before && ++guard < 2000);
 }
 
 // ---------------- picking ----------------
@@ -865,7 +933,7 @@ function openBodyMenu(x, y, p) {
   h += mi('pickLook', 'pipette', t('takeAsCurrent'), '') + mi('applyCur', 'brush', t('applyCurrent'), '');
   h += mi('replace', 'replace', t('replaceEverywhere'), '');
   const fsel = sel.find((x) => x.f != null);
-  if (fsel) h += '<hr>' + mi('skFace', 'sketch', t('skOnFace'), 'K') + mi('pullF', 'pull', t('opPull') + '…', '');
+  if (fsel) h += '<hr>' + mi('growF', 'plus', t('growMore'), '+') + mi('shrinkF', 'minus', t('growLess'), '−') + mi('growAll', 'target', t('growAll'), '') + '<hr>' + mi('skFace', 'sketch', t('skOnFace'), 'K') + mi('pullF', 'pull', t('opPull') + '…', '');
   if (bs.some((b) => Object.keys(b.faceColors || {}).length)) h += mi('resetFaces', 'reset', t('resetFaces'), '');
   h += '<hr>' + mi('rename', 'edit', t('rename'), 'F2', { dis: !one }) + mi('dup', 'dup', t('duplicate'), 'Ctrl+D') + mi('isolate', 'isolate', t('isolate'), '') + mi('hide', 'eyeOff', t('hide'), 'H') + mi('zoom', 'fit', t('zoomTo'), '');
   h += '<hr>' + mi('del', 'trash', t('delete'), 'Del', { bad: true });
@@ -875,7 +943,7 @@ function openBodyMenu(x, y, p) {
     applyCur: () => paint(sel, cur, sel.some((s) => s.f != null) ? 'face' : 'body'),
     replace: () => replaceColour(lookOf(bs[0], sel[0].f).color, cur),
     resetFaces: () => commit(withBodies(bs.map((b) => b.id), (b) => { b.faceColors = {}; return b; })),
-    skFace: () => startSketch('face'), pullF: () => focusOp('pull'),
+    skFace: () => startSketch('face'), pullF: () => focusOp('pull'), growF: () => growSelection(1), shrinkF: () => growSelection(-1), growAll: selectConnectedAll,
     rename: () => startRename(one.id), dup: duplicate, isolate, hide: hideSel, zoom: () => fitView(null, true), del: deleteSel,
   });
 }
@@ -995,6 +1063,12 @@ function renderProps() {
     return;
   }
   const b = bs[0], s = sel.find((x) => x.b === b.id);
+  const fsel = sel.filter((x) => x.b === b.id && x.f != null);
+  if (fsel.length > 1 && b.mesh.groups) { // several faces of one body: their count and total area
+    let area = 0; fsel.forEach((x) => { const gr = b.mesh.groups[x.f]; if (gr) area += meshStats(b.mesh, gr[0], gr[1]).area; });
+    el.innerHTML = '<span class="eyebrow">' + esc(t('nFaces', fsel.length)) + '</span><span class="ptitle">' + esc(b.name) + '</span><dl class="kv"><dt>' + esc(t('area')) + '</dt><dd>' + fmt(area, 3) + ' mm²</dd><dt>' + esc(t('size')) + '</dt><dd>' + dims + ' mm</dd></dl><span class="note">' + esc(t('growHint')) + '</span>';
+    return;
+  }
   const g = groupById(b.group);
   const tris = b.mesh.index ? b.mesh.index.length / 3 : 0;
   let h = '<span class="eyebrow">' + esc(s.f != null ? t('face') + ' ' + (s.f + 1) : t('body')) + '</span><span class="ptitle">' + esc(b.name) + '</span><dl class="kv">';
@@ -1448,7 +1522,7 @@ function renderSettings() {
     '<span class="note">' + esc(t('stepNote')) + '</span></fieldset>';
   h += '<fieldset><legend>' + esc(t('hotkeys')) + '</legend><div class="keys">' + [
     ['Ctrl+O', 'open'], ['Ctrl+S', 'saveProject'], ['Ctrl+E', 'export'], ['Ctrl+Z / Ctrl+Y', 'undoRedo'], ['Q', 'toolSelect'], ['I', 'toolPick'], ['B', 'toolPaint'], ['Alt+' + t('click'), 'altPick'], ['Shift+' + t('click'), 'shiftPaint'],
-    ['T / R', 'moveRotate'], ['M', 'toolMeasure'], ['G', 'filterToggle'], ['Ctrl+Shift+C / V', 'copyPaste'], ['F', 'fit'], ['Ctrl+1…7', 'views'], ['H / Shift+H', 'hideShow'], ['Ctrl+D', 'duplicate'], ['F2', 'rename'], ['Del', 'delete'], [t('dblclick'), 'pivotKey'],
+    ['T / R', 'moveRotate'], ['M', 'toolMeasure'], ['G', 'filterToggle'], ['+ / −', 'growKeys'], ['Ctrl+Shift+C / V', 'copyPaste'], ['F', 'fit'], ['Ctrl+1…7', 'views'], ['H / Shift+H', 'hideShow'], ['Ctrl+D', 'duplicate'], ['F2', 'rename'], ['Del', 'delete'], [t('dblclick'), 'pivotKey'],
   ].map(([k, l]) => '<kbd>' + esc(k) + '</kbd><span>' + esc(t(l)) + '</span>').join('') + '</div><span class="note">' + esc(t('mouseNote')) + '</span></fieldset>';
   const BI = window.TDV_BUILD && window.TDV_BUILD.app !== 'web' ? window.TDV_BUILD : null;
   h += '<fieldset><legend>' + esc(t('about')) + '</legend><div><b>3DViewer ' + esc(BI ? BI.label : VLABEL) + '</b> <span class="note">' + esc(t('fromDate', BI ? BI.day : VDATE)) + '</span></div>' + updatesBlock() +
@@ -1582,6 +1656,8 @@ document.addEventListener('keydown', (e) => {
   if (ctrl && k === 'a') { e.preventDefault(); selectAll(); return; }
   if (ctrl && k === 'd') { e.preventDefault(); duplicate(); return; }
   if (ctrl && /^[1-7]$/.test(e.key)) { e.preventDefault(); setView(['front', 'back', 'left', 'right', 'top', 'bottom', 'iso'][Number(e.key) - 1]); return; }
+  if (!e.altKey && (e.code === 'NumpadAdd' || e.code === 'Equal' || e.key === '+')) { e.preventDefault(); growSelection(1); return; }
+  if (!e.altKey && (e.code === 'NumpadSubtract' || e.code === 'Minus' || e.key === '-')) { e.preventDefault(); growSelection(-1); return; }
   if (ctrl || e.altKey) return;
   switch (k) {
     case 'escape': hideMenu(); if (tool === 'measure' && MS.a) clearMeasure(); else if (tool !== 'select') setTool('select'); else setSel([]); break;

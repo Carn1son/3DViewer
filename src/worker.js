@@ -23,7 +23,8 @@
     const m = ev.data || {};
     if (m.cmd === 'init') {
       try {
-        const [ocB, oiB] = await Promise.all([bytesOf(m.ocWasm), bytesOf(m.oiWasm)]);
+        const load = (b64, url) => (url ? fetch(url).then((r) => { if (!r.ok) throw new Error(url + ' ' + r.status); return r.arrayBuffer(); }) : bytesOf(b64));
+        const [ocB, oiB] = await Promise.all([load(m.ocWasm, m.ocUrl), load(m.oiWasm, m.oiUrl)]);
         const oc = await self.__ocInit({ instantiateWasm: hook(ocB), print: quiet, printErr: quiet });
         replicad.setOC(oc);
         const oi = await occtimportjs({ instantiateWasm: hook(oiB), print: quiet, printErr: quiet });

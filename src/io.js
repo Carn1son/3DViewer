@@ -494,6 +494,12 @@ async function writeGLB(bodies) {
   return new Blob([glb], { type: 'model/gltf-binary' });
 }
 async function saveBlob(blob, name) {
+  const D = window.tdvDesktop;
+  if (D && D.saveFile) { // Windows app: the usual Windows "Save as" dialog
+    const path = await D.saveFile(name, new Uint8Array(await blob.arrayBuffer()));
+    if (!path) throw new Error(t('cancelled'));
+    return true;
+  }
   if (window.showSaveFilePicker) {
     try {
       const h = await window.showSaveFilePicker({ suggestedName: name });

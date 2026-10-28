@@ -29,7 +29,7 @@ jobs:
           echo "day=$(TZ=Europe/Moscow date +%d.%m.%Y)" >> "$GITHUB_OUTPUT"
 
   windows:
-    name: Windows EXE
+    name: Windows EXE (WebView2)
     needs: meta
     runs-on: windows-latest
     steps:
@@ -37,42 +37,47 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Build the web app
+      - name: Web app inside the exe
         shell: bash
         run: |
-          pip install pillow
-          python src/build.py
+          pip install pillow > /dev/null
+          python src/build.py win
           echo "window.TDV_BUILD = { version: '${{ needs.meta.outputs.ver }}', label: '${{ needs.meta.outputs.label }}', day: '${{ needs.meta.outputs.day }}', app: 'windows' };" > www/build-info.js
-          rm -rf electron/www
-          cp -r www electron/www
-          mkdir -p electron/build
-          cp www/icon.ico electron/build/icon.ico
-      - name: Install
-        working-directory: electron
+          printf 'version=%s\napp=3DViewer\nportable=3DViewer-portable.exe\n' "${{ needs.meta.outputs.ver }}" > src/win/build.txt
+          cp www/icon.ico src/win/icon.ico
+          cd www && 7z a -tzip -mx=9 ../src/win/www.zip . > /dev/null
+      - name: Build the exe
         shell: bash
         run: |
-          npm install --save-dev electron@31.7.7 electron-builder@25.1.8
-          npm install --save electron-updater@^6.3.9
-          npm pkg set version=${{ needs.meta.outputs.ver }}
-      - name: Build
-        working-directory: electron
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --win nsis portable --publish never
+          IFS=. read -r MA MI < src/VERSION; MI=$(echo "$MI" | tr -dc 0-9)
+          if ! dotnet build src/win/3DViewer.csproj -c Release -nologo -p:TdvFileVersion=$MA.$((10#$MI)).0 > build.log 2>&1; then
+            grep -iE "error|warn" build.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done; tail -5 build.log; exit 1
+          fi
+      - name: Installer, portable copy, update feed
+        shell: bash
+        run: |
+          EXE=$(find src/win/bin -name 3DViewer.exe | head -1)
+          mkdir -p dist && cp "$EXE" dist/3DViewer-portable.exe && cp "$EXE" src/win/3DViewer.exe
+          MN=$(command -v makensis || true); [ -z "$MN" ] && MN="/c/Program Files (x86)/NSIS/makensis.exe"
+          [ -f "$MN" ] || command -v makensis > /dev/null || choco install nsis -y --no-progress > /dev/null
+          cd src/win
+          if ! "$MN" -V2 -DVERSION=${{ needs.meta.outputs.ver }} -DOUTFILE=3DViewer-Setup.exe -DEXE=3DViewer.exe installer.nsi > nsis.log 2>&1; then
+            tail -25 nsis.log | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          mv 3DViewer-Setup.exe ../../dist/ && cd ../..
+          # latest.yml: the feed the earlier Electron build checks, so it updates itself to this one
+          SHA=$(openssl dgst -sha512 -binary dist/3DViewer-Setup.exe | openssl base64 -A); SIZE=$(stat -c %s dist/3DViewer-Setup.exe)
+          printf 'version: %s\nfiles:\n  - url: 3DViewer-Setup.exe\n    sha512: %s\n    size: %s\npath: 3DViewer-Setup.exe\nsha512: %s\nreleaseDate: %s\n' "${{ needs.meta.outputs.ver }}" "$SHA" "$SIZE" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > dist/latest.yml
+          echo "::notice::$(ls -la dist | tr '\n' ' ')"
       - uses: actions/upload-artifact@v4
         with:
           name: 3DViewer-windows
-          path: |
-            electron/dist/*.exe
-            electron/dist/*.blockmap
-            electron/dist/latest.yml
+          path: dist/*
 
   release:
     name: Release (download links, updates)
     needs: [meta, windows]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
