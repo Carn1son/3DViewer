@@ -460,9 +460,55 @@ function createKernel(R, oc, occti) {
     w.delete(); doc.delete();
     if (!ok) throw new Error('STEP export failed');
     const data = oc.FS.readFile('/out.step'); unlink('/out.step');
-    const bytes = data.slice().buffer;
+    const fixed = altiumColours(new TextDecoder().decode(data));
+    const bytes = new TextEncoder().encode(fixed).buffer;
     return { result: { bytes }, transfer: [bytes] };
   };
+
+  // Colours every CAD program reads, older Altium versions included (they read what SolidWorks writes):
+  //  - colours as numbers: OCCT writes pure white/black/red... as DRAUGHTING_PRE_DEFINED_COLOUR('white'), which some readers skip
+  //  - face colours as plain STYLED_ITEMs on the faces, not OVER_RIDING_STYLED_ITEM, which some readers ignore
+  //  - every face of a coloured solid carries its colour itself, for readers that only look at faces
+  function altiumColours(txt) {
+    const PRE = { red: [1, 0, 0], green: [0, 1, 0], blue: [0, 0, 1], yellow: [1, 1, 0], magenta: [1, 0, 1], cyan: [0, 1, 1], black: [0, 0, 0], white: [1, 1, 1] };
+    txt = txt.replace(/DRAUGHTING_PRE_DEFINED_COLOUR\s*\(\s*'(\w+)'\s*\)/g, (m, n) => {
+      const c = PRE[n.toLowerCase()]; return c ? "COLOUR_RGB('" + n + "'," + c.map((v) => v.toFixed(1)).join(',') + ')' : m;
+    });
+    txt = txt.replace(/OVER_RIDING_STYLED_ITEM\s*\(\s*'[^']*'\s*,\s*(\([^)]*\))\s*,\s*(#\d+)\s*,\s*#\d+\s*\)/g, "STYLED_ITEM('color',$1,$2)");
+    // entities by id
+    const ent = new Map(); let maxId = 0;
+    const re = /#(\d+)\s*=\s*([A-Z_0-9]+)\s*\(([\s\S]*?)\)\s*;/g; let m;
+    while ((m = re.exec(txt))) { const id = +m[1]; ent.set(id, { type: m[2], body: m[3] }); if (id > maxId) maxId = id; }
+    const refs = (s) => (s.match(/#\d+/g) || []).map((r) => +r.slice(1));
+    const styledFaces = new Set(), solidStyle = [];
+    ent.forEach((e) => {
+      if (e.type !== 'STYLED_ITEM') return;
+      const r = refs(e.body); if (r.length < 2) return;
+      const psa = r[0], item = r[r.length - 1], it = ent.get(item);
+      if (!it) return;
+      if (it.type === 'ADVANCED_FACE') styledFaces.add(item);
+      else if (it.type === 'MANIFOLD_SOLID_BREP' || it.type === 'BREP_WITH_VOIDS' || it.type === 'SHELL_BASED_SURFACE_MODEL') solidStyle.push([item, psa]);
+    });
+    const facesOf = (id, seen) => { // solid -> shells -> faces
+      const e = ent.get(id); if (!e || seen.has(id)) return []; seen.add(id);
+      if (e.type === 'ADVANCED_FACE') return [id];
+      if (/SHELL|SOLID_BREP|BREP_WITH_VOIDS|SURFACE_MODEL/.test(e.type)) return refs(e.body).flatMap((r) => facesOf(r, seen));
+      return [];
+    };
+    const added = [];
+    solidStyle.forEach(([solid, psa]) => {
+      facesOf(solid, new Set()).forEach((f) => {
+        if (styledFaces.has(f)) return;
+        styledFaces.add(f);
+        added.push([++maxId, psa, f]);
+      });
+    });
+    if (!added.length) return txt;
+    const lines = added.map(([id, psa, f]) => '#' + id + " = STYLED_ITEM('color',(#" + psa + '),#' + f + ');').join('\n');
+    // list them in the presentation representation that holds the other styles
+    txt = txt.replace(/(MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION\s*\(\s*'[^']*'\s*,\s*\()/, '$1' + added.map((a) => '#' + a[0]).join(',') + ',');
+    return txt.replace(/\nENDSEC;\s*\nEND-ISO-10303-21;/, '\n' + lines + '\nENDSEC;\nEND-ISO-10303-21;');
+  }
 
   H.exportBrep = ({ items }) => {
     const shp = items.map((it) => bodyShape(it).shape);
