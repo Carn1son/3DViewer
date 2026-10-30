@@ -1,24 +1,52 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png"><img src="docs/logo-light.png" width="560" alt="3DViewer — CAD для самых маленьких"></picture></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png"><img src="docs/logo-light.png" width="560" alt="3DViewer — CAD for the little ones"></picture></p>
 
-<p align="center">Простая программа для 3D на ПК: открыть модель почти любого формата, раскрасить, сделать несложную деталь и сохранить в STEP с цветами.</p>
+<p align="center">Lightweight 3D viewer and editor for Windows. Open, colour, model and export to STEP.</p>
 
 <p align="center">
-  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-Setup.exe"><b>Windows — установщик</b></a> ·
-  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-portable.exe"><b>Windows — без установки</b></a>
+  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-Setup.exe"><b>Windows Installer</b></a> ·
+  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-portable.exe"><b>Windows Portable</b></a>
 </p>
 
-## Возможности
-- **Открытие:** STEP/STP, IGES/IGS, BREP — точная геометрия (OpenCascade); STL, OBJ+MTL, GLB/GLTF, FBX, DAE, 3DS, PLY, 3MF, AMF, VRML/WRL, OFF, VTK, USDZ, LWO, KMZ, PCD, XYZ; проект `.3dv`. Несколько файлов — в одну сцену.
-- Закрытые форматы (SolidWorks .SLDPRT/.SLDASM, Parasolid, Inventor, CATIA, Creo, NX…) распознаются, программа подсказывает, как сохранить их в STEP.
-- **Оформление:** цвет, металличность, шероховатость, прозрачность — для тела, грани или всего компонента. Пипетка (I) → кисть (B), копировать/вставить оформление (Ctrl+Shift+C/V), замена цвета во всей сцене, библиотека (пластики, металлы, маски плат, светодиоды…), недавние цвета.
-- **Эскиз → тело:** эскиз на плоскости XY/XZ/YZ или на плоской грани (линия, дуга по 3 точкам, прямоугольник, окружность, многоугольник, привязки, ввод размеров с клавиатуры), затем вытянуть / повернуть / вырезать / добавить к телу. Вытягивание грани.
-- **Измерение:** привязка к вершинам, серединам, центрам отверстий, рёбрам и граням; расстояние и отдельно ΔX/ΔY/ΔZ линиями, перпендикуляр до плоскости грани.
-- **Моделирование:** коробка, пластина со скруглёнными углами, цилиндр, труба, сфера, конус, тор, призма; перемещение и поворот (мышью и числами), линейный и круговой массив, зеркало (в т.ч. относительно грани), масштаб, объединение / вычитание / пересечение, скругление и фаска, отмена/повтор.
-- **Экспорт:** STEP AP214/AP242/AP203 (точная геометрия, цвета тел и граней, имена, мм), BREP, STL (с цветами), 3MF, OBJ+MTL, GLB, PLY, проект .3dv.
-- Измерение расстояний, виды (Ctrl+1…7), перспектива/ортогональ, тёмная и светлая тема, русский и английский.
+## Features
 
-## Сборка
-- Веб-версия: `python3 src/build.py` → папка `www/`, открыть `www/index.html` в Chrome/Edge.
-- Windows: `src/win` — маленькое окно на WebView2 (браузер, встроенный в Windows 10/11) вокруг той же веб-версии, как у BoardV. Каждый push в `main` собирает установщик и portable .exe через GitHub Actions и выкладывает их в Releases.
+### Import
+- STEP, IGES, BREP with exact geometry and colours
+- STL, OBJ, GLB, GLTF, FBX, DAE, 3DS, PLY, 3MF, AMF, VRML, OFF, VTK, USDZ
+- Native `.3dv` projects
+- Multiple files into one scene
+- Automatic alignment and centering on import
 
-Ядро: Open CASCADE Technology (LGPL-2.1) через replicad-opencascadejs и occt-import-js; графика: three.js (MIT). Лицензии — в `src/vendor/`.
+### Appearance
+- Colour, metalness, roughness and opacity per body or face
+- Eyedropper and paint brush
+- Copy and paste appearance between models
+- Material library and saved palettes
+
+### Modeling
+- Sketches on planes or faces, extrude, revolve, cut
+- Primitives, booleans, fillets and chamfers
+- Move, rotate, mirror, scale
+- Linear and circular patterns
+- Face pull and face-to-plane alignment
+
+### Measurement
+- Snapping to vertices, edges, faces and hole centres
+- Distance with ΔX, ΔY, ΔZ components
+
+### Export
+- STEP AP203, AP214, AP242 with body and face colours
+- Altium Designer compatible colours
+- BREP, STL, 3MF, OBJ, GLB, PLY
+
+### Application
+- Dark and light themes
+- English and Russian interface
+- Automatic updates
+
+## Build
+- Web: `python3 src/build.py`
+- Windows: WebView2 wrapper in `src/win`, built by GitHub Actions on every push to `main`
+
+## License
+- Open CASCADE Technology, LGPL-2.1
+- three.js, MIT
