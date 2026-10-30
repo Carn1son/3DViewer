@@ -43,7 +43,7 @@ jobs:
           pip install pillow > /dev/null
           python src/build.py win
           echo "window.TDV_BUILD = { version: '${{ needs.meta.outputs.ver }}', label: '${{ needs.meta.outputs.label }}', day: '${{ needs.meta.outputs.day }}', app: 'windows' };" > www/build-info.js
-          printf 'version=%s\napp=3DViewer\nportable=3DViewer-portable.exe\n' "${{ needs.meta.outputs.ver }}" > src/win/build.txt
+          printf 'version=%s\napp=3DViewer\n' "${{ needs.meta.outputs.ver }}" > src/win/build.txt
           cp www/icon.ico src/win/icon.ico
           cd www && 7z a -tzip -mx=9 ../src/win/www.zip . > /dev/null
       - name: Build the exe
@@ -53,11 +53,11 @@ jobs:
           if ! dotnet build src/win/3DViewer.csproj -c Release -nologo -p:TdvFileVersion=$MA.$((10#$MI)).0 > build.log 2>&1; then
             grep -iE "error|warn" build.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done; tail -5 build.log; exit 1
           fi
-      - name: Installer, portable copy, update feed
+      - name: Installer, update feed
         shell: bash
         run: |
           EXE=$(find src/win/bin -name 3DViewer.exe | head -1)
-          mkdir -p dist && cp "$EXE" dist/3DViewer-portable.exe && cp "$EXE" src/win/3DViewer.exe
+          mkdir -p dist && cp "$EXE" src/win/3DViewer.exe
           MN=$(command -v makensis || true); [ -z "$MN" ] && MN="/c/Program Files (x86)/NSIS/makensis.exe"
           [ -f "$MN" ] || command -v makensis > /dev/null || choco install nsis -y --no-progress > /dev/null
           cd src/win
@@ -94,7 +94,7 @@ jobs:
         run: |
           set -e
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
-          printf '%s\n' "3DViewer $LABEL от $DAY." "" "Всегда последняя версия:" "- Windows, установщик: $BASE/3DViewer-Setup.exe" "- Windows, без установки: $BASE/3DViewer-portable.exe" > notes.md
+          printf '%s\n' "3DViewer $LABEL от $DAY." "" "Всегда последняя версия:" "- Windows, установщик: $BASE/3DViewer-Setup.exe" > notes.md
           gh release delete "v$VER" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true  # same version rebuilt: replace it
           gh release create "v$VER" dl/3DViewer-windows/* --repo "$GITHUB_REPOSITORY" --title "3DViewer $LABEL — $DAY" --notes-file notes.md --latest
       - name: Keep only the newest release

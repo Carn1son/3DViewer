@@ -56,7 +56,7 @@ function checkUpdates(auto) {
   });
 }
 function startUpdate() {
-  if (UPD.mode === 'portable') { window.open(UPD_PAGE + '/download/3DViewer-portable.exe'); return; }
+  if (UPD.mode === 'portable') { window.open(UPD_PAGE + '/download/3DViewer-Setup.exe'); return; }
   updSet('downloading', { pct: 0 });
   DESK.update.download();
 }

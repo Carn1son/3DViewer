@@ -3,8 +3,7 @@
 <p align="center">Lightweight 3D viewer and editor for Windows. Open, colour, model and export to STEP.</p>
 
 <p align="center">
-  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-Setup.exe"><b>Windows Installer</b></a> ·
-  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-portable.exe"><b>Windows Portable</b></a>
+  <a href="https://github.com/Carn1son/3DViewer/releases/latest/download/3DViewer-Setup.exe"><b>Windows Installer</b></a>
 </p>
 
 ## Features

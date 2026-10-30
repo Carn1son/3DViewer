@@ -35,7 +35,7 @@ namespace TDV
         }
         public static string Get(string k, string def) { string v; return V.TryGetValue(k, out v) && v != "" ? v : def; }
         public static string Version { get { return Get("version", "0.0.0"); } }
-        public static string PortableName { get { return Get("portable", "3DViewer-portable.exe"); } }
+        public static string PortableName { get { return Get("portable", "3DViewer-Setup.exe"); } }
     }
 
     static class Program
