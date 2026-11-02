@@ -152,22 +152,32 @@ function modelGroup(st) { // where newly created bodies go
   if (g) return { st: s, gid: g.id };
   return ensureGroup(t('modelGroup'), s);
 }
-// free kernel shapes and GPU buffers nothing refers to any more
+// free kernel shapes and GPU buffers nothing refers to any more.
+// A shape made by an operation still in progress (aligning or patterning many bodies) is not in any state yet:
+// it stays protected until a state refers to it, or for a minute if the operation was abandoned.
 let gcTimer = 0;
-function scheduleGC() {
+function scheduleGC(ms) {
   clearTimeout(gcTimer);
   gcTimer = setTimeout(() => {
+    if (K.pend.size || !$('busy').hidden) { scheduleGC(); return; } // an operation is running: its results are not committed yet
     const sids = new Set(), meshes = new Set();
     [state].concat(undoStack, redoStack).forEach((s) => s.bodies.forEach((b) => { if (b.sid) sids.add(b.sid); if (b.mesh) meshes.add(b.mesh); }));
-    const dead = [];
-    liveSids.forEach((id) => { if (!sids.has(id)) dead.push(id); });
-    dead.forEach((id) => liveSids.delete(id));
+    const now = Date.now(), dead = [];
+    let waiting = false;
+    liveSids.forEach((id) => {
+      if (sids.has(id)) { freshSids.delete(id); return; }
+      const born = freshSids.get(id);
+      if (born && now - born < 60000) { waiting = true; return; }
+      dead.push(id);
+    });
+    dead.forEach((id) => { liveSids.delete(id); freshSids.delete(id); });
     if (dead.length && K.state === 'ready') kcall('free', { sids: dead }).catch(() => {});
     baseGeo.forEach((g, m) => { if (!meshes.has(m)) { g.dispose(); baseGeo.delete(m); const e = edgeGeo.get(m); if (e) { e.dispose(); edgeGeo.delete(m); } } });
-  }, 800);
+    if (waiting) scheduleGC(15000);
+  }, ms || 800);
 }
-const liveSids = new Set();
-function track(sid) { if (sid) liveSids.add(sid); return sid; }
+const liveSids = new Set(), freshSids = new Map();
+function track(sid) { if (sid) { liveSids.add(sid); freshSids.set(sid, Date.now()); } return sid; }
 
 // ---------------- three.js scene ----------------
 const stage = $('stage');
